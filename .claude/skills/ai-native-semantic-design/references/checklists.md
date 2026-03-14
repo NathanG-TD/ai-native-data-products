@@ -122,6 +122,8 @@ WHERE is_pii = 'Y';
 
 ## 6. Documentation Capture Checklist
 
+- [ ] Documentation SQL written inline as `02-semantic/{NN}-documentation.sql` (last numbered file in module directory)
+- [ ] File header includes `-- Deploy: Phase 1, after Semantic DDL + seed data` comment
 - [ ] `dp_documentation.Module_Registry` INSERT generated (module_name = 'SEMANTIC', version 1.0.0)
 - [ ] `dp_documentation.Design_Decision` INSERTs generated (minimum 3 decisions)
 - [ ] Decision IDs follow `DD-SEMANTIC-{NNN}` convention

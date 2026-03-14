@@ -129,6 +129,8 @@ Apply these checks across ALL entities (consistency is the goal — agents learn
 
 ## 8. Documentation Capture Checklist
 
+- [ ] Documentation SQL written inline as `01-domain/{NN}-documentation.sql` (last numbered file in module directory)
+- [ ] File header includes `-- Deploy: Phase 1, after Domain DDL` comment
 - [ ] `dp_documentation.Module_Registry` INSERT generated (module_name = 'DOMAIN', version 1.0.0)
 - [ ] `dp_documentation.Design_Decision` INSERTs generated (minimum 3 decisions)
 - [ ] Decision IDs follow `DD-DOMAIN-{NNN}` convention

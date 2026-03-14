@@ -202,6 +202,8 @@ WHERE module_name = 'Observability' AND is_active = 'Y';
 
 ## 7. Documentation Capture Checklist
 
+- [ ] Documentation SQL written inline as `05-observability/{NN}-documentation.sql` (last numbered file in module directory)
+- [ ] File header includes `-- Deploy: Phase 3, after Observability DDL` comment
 - [ ] `dp_documentation.Module_Registry` INSERT generated (module_name = 'OBSERVABILITY', version 1.0.0)
 - [ ] `dp_documentation.Design_Decision` INSERTs generated (minimum 3 decisions)
 - [ ] Decision IDs follow `DD-OBSERVABILITY-{NNN}` convention

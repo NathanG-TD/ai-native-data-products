@@ -88,7 +88,9 @@ Confirm or ask for:
 
 ### Step 4 — Documentation Capture
 
-Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, and ID conventions.
+Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, ID conventions, and **output file convention**.
+
+**Output file**: Write documentation SQL as the last numbered file in the Prediction module directory: `03-prediction/{NN}-documentation.sql` (e.g., `03-prediction/03-documentation.sql` if 02 is the last existing file). Include a Deploy comment in the header (e.g., `-- Deploy: Phase 2, after Prediction DDL`).
 
 **Module short name:** `PREDICTION` — Decision IDs: `DD-PREDICTION-{NNN}`, Change log: `CL-PREDICTION-{NNN}`, Cookbook: `QC-PREDICTION-{NNN}`
 

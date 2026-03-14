@@ -186,6 +186,8 @@ WHERE module_name = 'Search' AND is_active = 'Y';
 
 ## 7. Documentation Capture Checklist
 
+- [ ] Documentation SQL written inline as `04-search/{NN}-documentation.sql` (last numbered file in module directory)
+- [ ] File header includes `-- Deploy: Phase 2, after Search DDL` comment
 - [ ] `dp_documentation.Module_Registry` INSERT generated (module_name = 'SEARCH', version 1.0.0)
 - [ ] `dp_documentation.Design_Decision` INSERTs generated (minimum 3 decisions)
 - [ ] Decision IDs follow `DD-SEARCH-{NNN}` convention

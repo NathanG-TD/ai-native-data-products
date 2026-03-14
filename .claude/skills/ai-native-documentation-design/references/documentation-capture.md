@@ -6,6 +6,31 @@ This file is the single-source reference for all module skills (Domain, Semantic
 
 ---
 
+## Output File Convention
+
+Documentation capture SQL is written **inline with each module** as the last numbered script in that module's directory — never in a separate documentation batch directory.
+
+| Documentation Type | Output File |
+|---|---|
+| Cross-product standards (`data_product = 'ALL'`) | `00-documentation-standards.sql` (root level, after database setup) |
+| Domain module documentation | `01-domain/{NN}-documentation.sql` (last numbered file) |
+| Semantic module documentation | `02-semantic/{NN}-documentation.sql` (last numbered file) |
+| Prediction module documentation | `03-prediction/{NN}-documentation.sql` (last numbered file) |
+| Search module documentation | `04-search/{NN}-documentation.sql` (last numbered file) |
+| Observability module documentation | `05-observability/{NN}-documentation.sql` (last numbered file) |
+| Memory module documentation | `06-memory/{NN}-documentation.sql` (last numbered file) |
+
+Where `{NN}` is the next sequential number after the last existing file in that module directory. For example, if a module has `01-tables.sql` and `02-views.sql`, the documentation file is `03-documentation.sql`.
+
+**File header convention** — each documentation file must include a Deploy comment indicating its position:
+```sql
+-- Deploy: Phase {N}, after {Module} DDL (Steps {range})
+```
+
+**Rationale**: Inline placement ensures `dp_documentation` is populated immediately after each module deploys, keeping the documentation database current throughout the deployment pipeline rather than only at the end.
+
+---
+
 ## Module Short Names
 
 | Module | Short Name | ID Prefix |

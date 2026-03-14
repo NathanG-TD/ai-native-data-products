@@ -23,6 +23,9 @@ Before generating DDL for the documentation database, confirm:
 
 When a module skill generates documentation INSERT statements:
 
+- [ ] Documentation SQL written **inline** as the last numbered file in the module directory (e.g., `01-domain/05-documentation.sql`), NOT in a separate documentation batch directory
+- [ ] Cross-product standards written to `00-documentation-standards.sql` at root level
+- [ ] File header includes `-- Deploy: Phase {N}, after {Module} DDL` comment
 - [ ] `data_product` value is consistent across all INSERTs for this data product
 - [ ] Module registered in `Module_Registry` with correct `data_product` and version 1.0.0
 - [ ] `Module_Registry.version_date` set to the design/deployment date

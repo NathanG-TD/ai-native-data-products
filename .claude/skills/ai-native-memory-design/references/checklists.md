@@ -268,6 +268,8 @@ WHERE module_name = 'Memory' AND is_active = 'Y';
 
 ## 8. Documentation Capture Checklist
 
+- [ ] Documentation SQL written inline as `06-memory/{NN}-documentation.sql` (last numbered file in module directory)
+- [ ] File header includes `-- Deploy: Phase 3, after Memory DDL` comment
 - [ ] `dp_documentation.Module_Registry` INSERT generated (module_name = 'MEMORY', version 1.0.0)
 - [ ] `dp_documentation.Design_Decision` INSERTs generated (minimum 3 decisions)
 - [ ] Decision IDs follow `DD-MEMORY-{NNN}` convention

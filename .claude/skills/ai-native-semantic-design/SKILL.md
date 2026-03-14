@@ -75,7 +75,9 @@ Seed data is as important as the DDL. For each step above, produce `INSERT` stat
 
 ### Step 5 — Documentation Capture
 
-Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, and ID conventions.
+Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, ID conventions, and **output file convention**.
+
+**Output file**: Write documentation SQL as the last numbered file in the Semantic module directory: `02-semantic/{NN}-documentation.sql` (e.g., `02-semantic/04-documentation.sql` if 03 is the last existing file). Include a Deploy comment in the header (e.g., `-- Deploy: Phase 1, after Semantic DDL + seed data`). Note: if subsequent registration files follow, they must be renumbered to maintain sequential ordering.
 
 **Module short name:** `SEMANTIC` — Decision IDs: `DD-SEMANTIC-{NNN}`, Change log: `CL-SEMANTIC-{NNN}`, Cookbook: `QC-SEMANTIC-{NNN}`
 

@@ -102,7 +102,9 @@ Both patterns store keys only. Entity-specific tables allow a more specific FK (
 
 ### Step 4 — Documentation Capture
 
-Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, and ID conventions.
+Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, ID conventions, and **output file convention**.
+
+**Output file**: Write documentation SQL as the last numbered file in the Search module directory: `04-search/{NN}-documentation.sql` (e.g., `04-search/03-documentation.sql` if 02 is the last existing file). Include a Deploy comment in the header (e.g., `-- Deploy: Phase 2, after Search DDL`).
 
 **Module short name:** `SEARCH` — Decision IDs: `DD-SEARCH-{NNN}`, Change log: `CL-SEARCH-{NNN}`, Cookbook: `QC-SEARCH-{NNN}`
 

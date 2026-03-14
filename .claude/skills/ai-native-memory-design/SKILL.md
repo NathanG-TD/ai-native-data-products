@@ -99,7 +99,9 @@ Confirm or ask for:
 
 ### Step 4 — Documentation Capture
 
-Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, and ID conventions.
+Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, ID conventions, and **output file convention**.
+
+**Output file**: Write documentation SQL as the last numbered file in the Memory module directory: `06-memory/{NN}-documentation.sql` (e.g., `06-memory/03-documentation.sql` if 02 is the last existing file). Include a Deploy comment in the header (e.g., `-- Deploy: Phase 3, after Memory DDL`).
 
 **Module short name:** `MEMORY` — Decision IDs: `DD-MEMORY-{NNN}`, Change log: `CL-MEMORY-{NNN}`, Cookbook: `QC-MEMORY-{NNN}`
 

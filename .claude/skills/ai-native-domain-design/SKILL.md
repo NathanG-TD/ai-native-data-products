@@ -89,7 +89,9 @@ All modules JOIN back to Domain; they never duplicate Domain attributes.
 
 ### Step 6 — Documentation Capture
 
-Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, and ID conventions.
+Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, ID conventions, and **output file convention**.
+
+**Output file**: Write documentation SQL as the last numbered file in the Domain module directory: `01-domain/{NN}-documentation.sql` (e.g., `01-domain/05-documentation.sql` if 04 is the last existing file). Include a Deploy comment in the header (e.g., `-- Deploy: Phase 1, after Domain DDL`).
 
 **Module short name:** `DOMAIN` — Decision IDs: `DD-DOMAIN-{NNN}`, Change log: `CL-DOMAIN-{NNN}`, Cookbook: `QC-DOMAIN-{NNN}`
 

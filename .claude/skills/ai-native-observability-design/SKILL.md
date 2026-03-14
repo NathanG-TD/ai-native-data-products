@@ -89,7 +89,9 @@ Confirm or ask for:
 
 ### Step 4 — Documentation Capture
 
-Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, and ID conventions.
+Read `../ai-native-documentation-design/references/documentation-capture.md` for the full protocol, SQL templates, ID conventions, and **output file convention**.
+
+**Output file**: Write documentation SQL as the last numbered file in the Observability module directory: `05-observability/{NN}-documentation.sql` (e.g., `05-observability/03-documentation.sql` if 02 is the last existing file). Include a Deploy comment in the header (e.g., `-- Deploy: Phase 3, after Observability DDL`).
 
 **Module short name:** `OBSERVABILITY` — Decision IDs: `DD-OBSERVABILITY-{NNN}`, Change log: `CL-OBSERVABILITY-{NNN}`, Cookbook: `QC-OBSERVABILITY-{NNN}`
 

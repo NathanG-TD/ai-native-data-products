@@ -85,6 +85,8 @@ Creates the shared documentation database with all tables and views. Run this **
 
 When any module skill for any data product makes a design decision, it generates INSERT statements into `dp_documentation`. Every record is tagged with `data_product` to maintain isolation.
 
+**Output file placement**: Documentation capture SQL is written **inline with each module** as the last numbered script in that module's directory (e.g., `01-domain/05-documentation.sql`). Cross-product standards go to `00-documentation-standards.sql` at root level. See `references/documentation-capture.md` for the full file convention. Never create a separate documentation batch directory.
+
 **Module registration protocol:**
 ```sql
 INSERT INTO dp_documentation.Module_Registry
@@ -462,7 +464,7 @@ When another module skill (Domain, Semantic, Search, etc.) makes a design decisi
 | Observability | OPERATIONAL (monitoring thresholds), INTEGRATION (lineage scope) |
 | Memory | ARCHITECTURE (session strategy), SECURITY (privacy scoping) |
 
-**Implementation**: Each module skill (Domain, Semantic, Prediction, Search, Observability, Memory) contains `references/documentation-capture.md` with the full protocol, SQL templates, and ID conventions. A dedicated "Documentation Capture" workflow step in each skill instructs the agent to review Step 2 decisions and generate INSERTs using that reference file.
+**Implementation**: Each module skill (Domain, Semantic, Prediction, Search, Observability, Memory) references the shared `references/documentation-capture.md` with the full protocol, SQL templates, ID conventions, and **output file convention**. A dedicated "Documentation Capture" workflow step in each skill instructs the agent to review design decisions and generate INSERTs, writing the output as the last numbered file in the module directory (e.g., `01-domain/05-documentation.sql`). Cross-product standards are written to `00-documentation-standards.sql` at root level.
 
 **Cross-product standards** (data_product = 'ALL') are typically captured by the Documentation skill itself or by an architecture governance process:
 - Boolean conventions (BYTEINT, is_ prefix)
