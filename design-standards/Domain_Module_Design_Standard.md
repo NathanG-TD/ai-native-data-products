@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 2.0 |
+| **Version** | 2.1 |
 | **Status** | STANDARD |
-| **Last Updated** | 2025-02-09 |
+| **Last Updated** | 2026-03-16 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Domain/Subject Data Module Structure |
 | **Type** | Design Standard (Structural Requirements) |
@@ -146,10 +146,10 @@ AI agents need to work autonomously with data without human instruction. This re
 
 ```sql
 CREATE TABLE Party_H (
-    party_key BIGINT NOT NULL
+    party_id BIGINT NOT NULL
         COMMENT 'Unique system identifier for Party entity, never reused, used for joins',
     
-    party_id VARCHAR(50) NOT NULL
+    party_key VARCHAR(50) NOT NULL
         COMMENT 'Natural business identifier from source system, used for user queries and external references',
     
     legal_name VARCHAR(200)
@@ -194,26 +194,26 @@ ORDER BY ColumnId;
 ```sql
 -- If one entity has these columns...
 CREATE TABLE Party_H (
-    party_key BIGINT,      -- Surrogate key
-    party_id VARCHAR(50),  -- Natural key
+    party_id BIGINT,      -- Surrogate key
+    party_key VARCHAR(50),  -- Natural key
     ...
 );
 
 -- Then ALL entities should follow same pattern
 CREATE TABLE Product_H (
-    product_key BIGINT,      -- Surrogate key (same pattern)
-    product_id VARCHAR(50),  -- Natural key (same pattern)
+    product_id BIGINT,      -- Surrogate key (same pattern)
+    product_key VARCHAR(50),  -- Natural key (same pattern)
     ...
 );
 
 CREATE TABLE Agreement_H (
-    agreement_key BIGINT,      -- Surrogate key (same pattern)
-    agreement_id VARCHAR(50),  -- Natural key (same pattern)
+    agreement_id BIGINT,      -- Surrogate key (same pattern)
+    agreement_key VARCHAR(50),  -- Natural key (same pattern)
     ...
 );
 ```
 
-**Agent Learning**: "Every entity has `{entity}_key` for internal references and `{entity}_id` for business references"
+**Agent Learning**: "Every entity has `{entity}_id` for internal references and `{entity}_key` for business references"
 
 **Pattern Example: Current State**
 ```sql
@@ -281,23 +281,23 @@ party_type, product_category, agreement_kind
 ```sql
 -- Good: Descriptive foreign keys
 CREATE TABLE PartyRole_H (
-    party_role_key BIGINT,
-    party_key BIGINT,              -- Clear: references Party
+    party_role_id BIGINT,
+    party_id BIGINT,              -- Clear: references Party
     role_type_code VARCHAR(20),
-    context_agreement_key BIGINT,  -- Clear: references Agreement in specific context
+    context_agreement_id BIGINT,  -- Clear: references Agreement in specific context
     ...
 );
 
 -- Avoid: Generic foreign keys
 CREATE TABLE PartyRole_H (
-    party_role_key BIGINT,
+    party_role_id BIGINT,
     fk1 BIGINT,     -- Unclear: what does this reference?
     fk2 BIGINT,     -- Unclear: what does this reference?
     ...
 );
 ```
 
-**Agent Learning**: "Column names ending in `_key` are foreign keys, the prefix tells me what entity they reference"
+**Agent Learning**: "Column names ending in `_id` are foreign keys, the prefix tells me what entity they reference"
 
 #### Technique 5: Standard Views for Common Patterns (REQUIRED)
 
@@ -394,7 +394,7 @@ SELECT * FROM Semantic.EntityMetadata WHERE entity_name = 'Party';
 ```sql
 CREATE TABLE Semantic.NamingStandards (
     standard_type VARCHAR(50),      -- 'ABBREVIATION', 'SUFFIX', 'PATTERN'
-    standard_value VARCHAR(100),    -- 'dts', '_H', '{entity}_key'
+    standard_value VARCHAR(100),    -- 'dts', '_H', '{entity}_id'
     meaning VARCHAR(500),           -- 'datetime stamp', 'history table', ...
     usage_guidance VARCHAR(1000),   -- When and how to apply
     examples VARCHAR(1000)          -- Concrete examples
@@ -440,8 +440,8 @@ If yes to all → Agent-discoverable ✅
 ```sql
 CREATE TABLE {EntityName}_H (
     -- Identity (Required)
-    {entity}_key        BIGINT NOT NULL,
-    {entity}_id         VARCHAR(50) NOT NULL,
+    {entity}_id        BIGINT NOT NULL,
+    {entity}_key         VARCHAR(50) NOT NULL,
     
     -- Temporal tracking (Required - implementation flexible)
     -- Designer chooses: bi-temporal, Type 2 SCD, or other
@@ -457,10 +457,10 @@ CREATE TABLE {EntityName}_H (
     -- Entity-specific attributes (Designer supplied)
     -- Based on enterprise data model or industry standard
     
-    PRIMARY INDEX ({entity}_key)
+    PRIMARY INDEX ({entity}_id)
 )
 -- NOTE: For temporal tables, use PRIMARY INDEX (not UNIQUE PRIMARY INDEX)
--- because multiple versions of same entity_key will exist.
+-- because multiple versions of same entity_id will exist.
 -- Designer defines appropriate index based on temporal strategy chosen.
 -- See Advocated Data Management Standards for detailed guidance.
 
@@ -469,10 +469,10 @@ COMMENT ON TABLE {EntityName}_H IS
 '{Entity} history table with temporal tracking - stores all versions of {entity} over time for point-in-time reconstruction';
 
 -- Column comments (Required for all columns)
-COMMENT ON COLUMN {EntityName}_H.{entity}_key IS 
-'Surrogate key - system generated unique identifier, never reused, used for all internal joins and foreign key references';
-
 COMMENT ON COLUMN {EntityName}_H.{entity}_id IS 
+'Surrogate key - system generated unique identifier, never reused, used for all internal joins, foreign key references, and subtype inheritance';
+
+COMMENT ON COLUMN {EntityName}_H.{entity}_key IS 
 'Natural business identifier from source system - used for user queries, reports, and external system integration';
 
 COMMENT ON COLUMN {EntityName}_H.is_current IS 
@@ -503,7 +503,7 @@ COMMENT ON COLUMN {EntityName}_H.is_deleted IS
 
 ```sql
 CREATE TABLE {ReferenceName}_R (
-    {reference}_key     BIGINT NOT NULL,
+    {reference}_id      BIGINT NOT NULL,
     {reference}_code    VARCHAR(20) NOT NULL,
     short_description   VARCHAR(100) NOT NULL,
     long_description    VARCHAR(500),
@@ -514,10 +514,10 @@ CREATE TABLE {ReferenceName}_R (
     is_current          BYTEINT NOT NULL DEFAULT 1,
     
     -- Optional: Hierarchy
-    parent_{reference}_key BIGINT,
+    parent_{reference}_id BIGINT,
     sort_order          INTEGER,
     
-    PRIMARY INDEX ({reference}_key)
+    PRIMARY INDEX ({reference}_id)
 )
 -- For reference data, can use UNIQUE PRIMARY INDEX on (code, effective_date)
 -- since reference data typically doesn't version like entity tables:
@@ -528,7 +528,7 @@ COMMENT ON TABLE {ReferenceName}_R IS
 '{Reference} reference data table - controlled vocabulary and lookup values with temporal validity periods';
 
 -- Column comments (Required for all columns)
-COMMENT ON COLUMN {ReferenceName}_R.{reference}_key IS 
+COMMENT ON COLUMN {ReferenceName}_R.{reference}_id IS 
 'Surrogate key for reference data entry';
 
 COMMENT ON COLUMN {ReferenceName}_R.{reference}_code IS 
@@ -549,8 +549,8 @@ COMMENT ON COLUMN {ReferenceName}_R.expiration_date IS
 COMMENT ON COLUMN {ReferenceName}_R.is_current IS 
 'Current validity indicator - 1 = currently valid, 0 = expired or future';
 
-COMMENT ON COLUMN {ReferenceName}_R.parent_{reference}_key IS 
-'Optional parent reference for hierarchical taxonomies - references {reference}_key for parent-child relationships';
+COMMENT ON COLUMN {ReferenceName}_R.parent_{reference}_id IS 
+'Optional parent reference for hierarchical taxonomies - references {reference}_id for parent-child relationships';
 
 COMMENT ON COLUMN {ReferenceName}_R.sort_order IS 
 'Optional display sequence for ordering reference values in UI or reports';
@@ -560,9 +560,9 @@ COMMENT ON COLUMN {ReferenceName}_R.sort_order IS
 
 ```sql
 CREATE TABLE {Entity1}{Entity2}_H (
-    {entity1}_{entity2}_key BIGINT NOT NULL,
-    {entity1}_key       BIGINT NOT NULL,
-    {entity2}_key       BIGINT NOT NULL,
+    {entity1}_{entity2}_id BIGINT NOT NULL,
+    {entity1}_id       BIGINT NOT NULL,
+    {entity2}_id       BIGINT NOT NULL,
     
     -- Temporal (same pattern as entity tables)
     -- ... temporal columns ...
@@ -572,7 +572,7 @@ CREATE TABLE {Entity1}{Entity2}_H (
     -- Relationship-specific attributes
     -- Designer supplies based on business requirements
     
-    PRIMARY INDEX ({entity1}_key)  -- Co-locate with first entity
+    PRIMARY INDEX ({entity1}_id)  -- Co-locate with first entity
 );
 
 -- NOTE: For temporal relationships, use PRIMARY INDEX
@@ -583,13 +583,13 @@ COMMENT ON TABLE {Entity1}{Entity2}_H IS
 '{Entity1} to {Entity2} relationship history - associative table with temporal tracking for many-to-many relationships';
 
 -- Column comments (Required for all columns)
-COMMENT ON COLUMN {Entity1}{Entity2}_H.{entity1}_{entity2}_key IS 
-'Surrogate key for this relationship instance - unique identifier for the association';
+COMMENT ON COLUMN {Entity1}{Entity2}_H.{entity1}_{entity2}_id IS 
+'iDM logical identifier for this relationship instance - system generated, unique identifier for the association';
 
-COMMENT ON COLUMN {Entity1}{Entity2}_H.{entity1}_key IS 
+COMMENT ON COLUMN {Entity1}{Entity2}_H.{entity1}_id IS 
 'Foreign key to {Entity1}_H.{entity1}_key - identifies the first entity in the relationship';
 
-COMMENT ON COLUMN {Entity1}{Entity2}_H.{entity2}_key IS 
+COMMENT ON COLUMN {Entity1}{Entity2}_H.{entity2}_id IS 
 'Foreign key to {Entity2}_H.{entity2}_key - identifies the second entity in the relationship';
 
 COMMENT ON COLUMN {Entity1}{Entity2}_H.is_current IS 
@@ -615,8 +615,8 @@ COMMENT ON COLUMN {Entity1}{Entity2}_H.is_deleted IS
 ```sql
 -- Use when module references MANY different entity types
 CREATE TABLE OtherModule.SomeTable (
-    some_table_key      BIGINT NOT NULL,
-    entity_key          BIGINT NOT NULL,      -- FK to any Domain entity
+    some_table_id      BIGINT NOT NULL,
+    entity_id          BIGINT NOT NULL,      -- FK to any Domain entity
     entity_type         VARCHAR(50) NOT NULL, -- 'PARTY', 'PRODUCT', etc.
     -- ... other columns ...
 );
@@ -625,7 +625,7 @@ CREATE TABLE OtherModule.SomeTable (
 SELECT * 
 FROM OtherModule.SomeTable t
 INNER JOIN Domain.Party_H p
-    ON p.party_key = t.entity_key
+    ON p.party_id = t.entity_id
    AND t.entity_type = 'PARTY'
 WHERE p.is_current = 1 AND p.is_deleted = 0;
 ```
@@ -635,13 +635,13 @@ WHERE p.is_current = 1 AND p.is_deleted = 0;
 ```sql
 -- Use when module references FEW specific entity types
 CREATE TABLE OtherModule.SomeTable (
-    some_table_key      BIGINT NOT NULL,
-    party_key           BIGINT,    -- NULL if not a party
-    product_key         BIGINT,    -- NULL if not a product
+    some_table_id      BIGINT NOT NULL,
+    party_id           BIGINT,    -- NULL if not a party
+    product_id         BIGINT,    -- NULL if not a product
     -- ... other columns ...
     
-    FOREIGN KEY (party_key) REFERENCES Domain.Party_H(party_key),
-    FOREIGN KEY (product_key) REFERENCES Domain.Product_H(product_key)
+    FOREIGN KEY (party_id) REFERENCES Domain.Party_H(party_id),
+    FOREIGN KEY (product_id) REFERENCES Domain.Product_H(product_id)
 );
 ```
 
@@ -656,12 +656,12 @@ CREATE TABLE OtherModule.SomeTable (
 SELECT 
     pred.prediction_score,
     pred.model_id,
-    p.party_id,          -- From Domain
+    p.party_key,          -- From Domain
     p.party_name,        -- From Domain
     p.party_type_code    -- From Domain
 FROM Prediction.Prediction_H pred
 INNER JOIN Domain.Party_H p
-    ON p.party_key = pred.entity_key
+    ON p.party_id = pred.entity_id
    AND pred.entity_type = 'PARTY'
    AND p.is_current = 1
    AND p.is_deleted = 0
@@ -677,7 +677,7 @@ WHERE pred.is_current = 1;
 ```sql
 -- Current version view (always create)
 CREATE VIEW {Entity}_Current AS
-SELECT {entity}_key, {entity}_id, [business columns]
+SELECT {entity}_id, {entity}_key, [business columns]
 FROM {Entity}_H
 WHERE is_current = 1 AND is_deleted = 0;
 
@@ -728,13 +728,13 @@ SELECT * FROM Agreement_H WHERE is_current = 1 AND is_deleted = 0;
 ```sql
 -- All entities use same pattern
 SELECT * FROM {Entity}_H
-WHERE {entity}_id = 'SPECIFIC_ID'
+WHERE {entity}_key = 'SPECIFIC_ID'
   AND is_current = 1 
   AND is_deleted = 0;
 
 -- Examples
-SELECT * FROM Party_H WHERE party_id = 'CUST-123' AND is_current = 1 AND is_deleted = 0;
-SELECT * FROM Product_H WHERE product_id = 'SKU-456' AND is_current = 1 AND is_deleted = 0;
+SELECT * FROM Party_H WHERE party_key = 'CUST-123' AND is_current = 1 AND is_deleted = 0;
+SELECT * FROM Product_H WHERE product_key = 'SKU-456' AND is_current = 1 AND is_deleted = 0;
 ```
 
 **Pattern 3: Use Standard Current View**
@@ -742,11 +742,11 @@ SELECT * FROM Product_H WHERE product_id = 'SKU-456' AND is_current = 1 AND is_d
 ```sql
 -- All entities provide _Current view
 SELECT * FROM {Entity}_Current 
-WHERE {entity}_id = 'SPECIFIC_ID';
+WHERE {entity}_key = 'SPECIFIC_ID';
 
 -- Examples
-SELECT * FROM Party_Current WHERE party_id = 'CUST-123';
-SELECT * FROM Product_Current WHERE product_id = 'SKU-456';
+SELECT * FROM Party_Current WHERE party_key = 'CUST-123';
+SELECT * FROM Product_Current WHERE product_key = 'SKU-456';
 ```
 
 ### 6.3 Benefits of Standard Patterns
@@ -763,7 +763,7 @@ SELECT * FROM Product_Current WHERE product_id = 'SKU-456';
 
 - [ ] All entities support `is_current = 1` filter for current version
 - [ ] All entities support `is_deleted = 0` filter for active records
-- [ ] All entities have `{entity}_id` for natural key queries
+- [ ] All entities have `{entity}_key` for natural key queries
 - [ ] All entities have `{Entity}_Current` view
 - [ ] Query patterns documented in Semantic module
 
@@ -835,7 +835,7 @@ SELECT * FROM Product_Current WHERE product_id = 'SKU-456';
 **Before finalizing design:**
 
 - [ ] Follows standard naming conventions (Section 3)
-- [ ] Has required identity columns ({entity}_key, {entity}_id)
+- [ ] Has required identity columns ({entity}_id, {entity}_key)
 - [ ] Has temporal tracking that supports point-in-time reconstruction
 - [ ] Has is_current and is_deleted indicators
 - [ ] All columns have COMMENT metadata
@@ -853,8 +853,8 @@ SELECT * FROM Product_Current WHERE product_id = 'SKU-456';
 
 **Every Domain entity table:**
 ```
-✅ {entity}_key          -- Surrogate key (or equivalent unique identifier)
-✅ {entity}_id           -- Natural/business key  
+✅ {entity}_id           -- Surrogate key (or equivalent unique identifier)
+✅ {entity}_key           -- Natural/business key
 ✅ Temporal tracking     -- Designer chooses approach (must support point-in-time)
 ✅ is_current            -- Current version indicator
 ✅ is_deleted            -- Soft delete indicator
@@ -891,20 +891,20 @@ SELECT * FROM Product_Current WHERE product_id = 'SKU-456';
 WHERE is_current = 1 AND is_deleted = 0
 
 -- Specific entity by natural key (all entities)
-WHERE {entity}_id = 'ID' AND is_current = 1 AND is_deleted = 0
+WHERE {entity}_key = 'ID' AND is_current = 1 AND is_deleted = 0
 
 -- Using standard view (all entities)
-SELECT * FROM {Entity}_Current WHERE {entity}_id = 'ID'
+SELECT * FROM {Entity}_Current WHERE {entity}_key = 'ID'
 ```
 
 ### Cross-Module Reference Patterns
 
 ```sql
 -- Pattern A: Generic reference (flexible)
-entity_key BIGINT, entity_type VARCHAR(50)
+entity_id BIGINT, entity_type VARCHAR(50)
 
 -- Pattern B: Specific reference (type-safe)
-party_key BIGINT, product_key BIGINT
+party_id BIGINT, product_id BIGINT
 ```
 
 ### Naming Consistency Guidelines
@@ -935,6 +935,7 @@ party_key BIGINT, product_key BIGINT
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 2.1 | 2026-03-16 | Swapped {entity}_id and {entity}_key roles: Since {entity}_id is already defined in iDM as the integration key, designating {entity}_key as the natural business key from the source system resolves conflicts regarding the inheritance of the iDM primary key. | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 2.0 | 2025-02-09 | Refactored to focus on structure, not implementation | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.0 | 2025-02-03 | Initial version | Nathan Green, Worldwide Data Architecture Team, Teradata |
 
