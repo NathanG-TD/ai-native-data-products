@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Status** | STANDARD |
-| **Last Updated** | 2025-02-27 |
+| **Last Updated** | 2026-03-17 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Prediction Module (Feature Store) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -201,7 +201,7 @@ COMMENT ON COLUMN Prediction.customer_behavioral_features.feature_group_key IS
 'Surrogate key for feature group record - unique identifier for this feature snapshot';
 
 COMMENT ON COLUMN Prediction.customer_behavioral_features.entity_key IS 
-'Foreign key to Domain entity (party_key) - links features to customer entity';
+'Foreign key to Domain entity (party_id) - links features to customer entity';
 
 COMMENT ON COLUMN Prediction.customer_behavioral_features.entity_type IS 
 'Entity type indicator - always PARTY for customer features - enables polymorphic references';
@@ -495,9 +495,9 @@ SELECT
     f.value_numeric
 FROM Domain.Party_H p
 INNER JOIN Prediction.feature_value f
-    ON f.entity_key = p.party_key
+    ON f.entity_key = p.party_id
    AND f.entity_type = 'PARTY'
-WHERE p.party_id = 'CUST-123'
+WHERE p.party_key = 'CUST-123'
   AND TIMESTAMP '2024-03-01 00:00:00+00:00' >= p.valid_from_dts
   AND TIMESTAMP '2024-03-01 00:00:00+00:00' < p.valid_to_dts
   AND f.observation_dts <= TIMESTAMP '2024-03-01 00:00:00+00:00'
@@ -539,11 +539,11 @@ CREATE TABLE Prediction.customer_features (
     feature_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
     -- Reference to Domain entity (standard pattern)
-    entity_key BIGINT NOT NULL,      -- FK to Domain.Party_H.party_key
+    entity_key BIGINT NOT NULL,      -- FK to Domain.Party_H.party_id
     entity_type VARCHAR(50) NOT NULL, -- 'PARTY'
     
     -- Or specific FK (type-safe)
-    party_key BIGINT NOT NULL,  -- FK to Domain.Party_H.party_key
+    party_id BIGINT NOT NULL,  -- FK to Domain.Party_H.party_id
     
     -- Feature values...
     -- Temporal columns...
@@ -559,11 +559,11 @@ SELECT
     cf.credit_score
 FROM Domain.Party_H p
 INNER JOIN Prediction.customer_features cf
-    ON cf.party_key = p.party_key
+    ON cf.party_id = p.party_id
    AND cf.is_current = 1
 WHERE p.is_current = 1
   AND p.is_deleted = 0
-  AND p.party_id = 'CUST-123';
+  AND p.party_key = 'CUST-123';
 ```
 
 ### 5.2 Integration with Semantic (Feature Definitions)
@@ -587,7 +587,7 @@ INSERT INTO Semantic.column_metadata (
 ```sql
 -- Actual feature values (in Prediction)
 INSERT INTO Prediction.customer_features (
-    party_key, age_years, observation_dts, valid_from_dts
+    party_id, age_years, observation_dts, valid_from_dts
 ) VALUES (
     1001, 45, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)
 );
@@ -644,7 +644,7 @@ AND is_active = 'Y';
 -- Wide format
 SELECT age_years, income_amt, credit_score
 FROM Prediction.customer_features
-WHERE party_key = 1001
+WHERE party_id = 1001
   AND is_current = 1;
 
 -- Tall format
@@ -674,7 +674,7 @@ WHERE entity_key = 1001
 -- View 1: Current features only (engineered features from Prediction)
 CREATE VIEW Prediction.v_customer_features_current AS
 SELECT 
-    cf.party_key,
+    cf.party_id,
     cf.age_normalized,        -- Engineered: normalized to 0-1
     cf.income_normalized,     -- Engineered: normalized to 0-1
     cf.credit_score_normalized, -- Engineered: normalized to 0-1
@@ -692,7 +692,7 @@ COMMENT ON VIEW Prediction.v_customer_features_current IS
 CREATE VIEW Prediction.v_customer_features_enriched AS
 SELECT 
     -- Domain attributes (NOT duplicated in Prediction)
-    p.party_id,
+    p.party_key,
     p.legal_name,
     p.party_type_code,
     p.birth_date,           -- Raw value stays in Domain
@@ -708,7 +708,7 @@ SELECT
     cf.observation_dts
 FROM Prediction.v_customer_features_current cf
 INNER JOIN Domain.Party_H p
-    ON p.party_key = cf.party_key
+    ON p.party_id = cf.party_id
    AND p.is_current = 1
    AND p.is_deleted = 0;
 
@@ -719,7 +719,7 @@ COMMENT ON VIEW Prediction.v_customer_features_enriched IS
 -- For training with historical features
 CREATE VIEW Prediction.v_customer_features_pit AS
 SELECT 
-    p.party_id,
+    p.party_key,
     p.legal_name,
     cf.age_normalized,
     cf.income_normalized,
@@ -728,7 +728,7 @@ SELECT
     cf.valid_to_dts
 FROM Prediction.customer_features cf
 INNER JOIN Domain.Party_H p
-    ON p.party_key = cf.party_key
+    ON p.party_id = cf.party_id
    AND p.is_current = 1;  -- Join current party record to historical features
 
 COMMENT ON VIEW Prediction.v_customer_features_pit IS 
@@ -875,8 +875,9 @@ Prediction → Observability: Feature drift, quality monitoring
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
-| 1.0 | 2025-02-09 | Initial Prediction Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.2 | 2026-03-17 | Updated naming convention: {entity}_id = Surrogate Key, {entity}_key = Natural Business Key, aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2025-02-27 | Changed is_current to be consistent with Domain module | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.0 | 2025-02-09 | Initial Prediction Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
 
 ---
 

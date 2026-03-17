@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 2.0 |
+| **Version** | 2.1 |
 | **Status** | STANDARD - Tested on Teradata |
-| **Last Updated** | 2025-02-09 |
+| **Last Updated** | 2026-03-17 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Semantic Module (Knowledge & Meaning) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -35,8 +35,8 @@
 ### 1.1 Key Terminology
 
 - **Entity** = Table (e.g., Party_H is an entity)
-- **Attribute** = Column (e.g., party_key is an attribute)
-- **Relationship** = How tables join (e.g., PartyAddress.party_key -> Party.party_key)
+- **Attribute** = Column (e.g., party_id is an attribute)
+- **Relationship** = How tables join (e.g., PartyAddress.party_id -> Party.party_id)
 
 ### 1.2 Primary Purpose: Enable Correct SQL Generation
 
@@ -105,10 +105,10 @@ COMMENT ON COLUMN Semantic.entity_metadata.view_name IS
 'Standard current view name for accessing current records - e.g., Party_Current';
 
 COMMENT ON COLUMN Semantic.entity_metadata.surrogate_key_column IS 
-'Name of surrogate key column - e.g., party_key, product_key';
+'Name of surrogate key column - e.g., party_id, product_id';
 
 COMMENT ON COLUMN Semantic.entity_metadata.natural_key_column IS 
-'Name of natural business key column - e.g., party_id, product_id';
+'Name of natural business key column - e.g., party_key, product_key';
 
 COMMENT ON COLUMN Semantic.entity_metadata.temporal_pattern IS 
 'Temporal tracking pattern used - BI_TEMPORAL, TYPE_2_SCD, NONE';
@@ -225,7 +225,7 @@ COMMENT ON COLUMN Semantic.naming_standard.standard_type IS
 'Type of naming convention - SUFFIX, PREFIX, PATTERN, ABBREVIATION';
 
 COMMENT ON COLUMN Semantic.naming_standard.standard_value IS 
-'The actual naming element - e.g., _H, _key, is_, dts';
+'The actual naming element - e.g., _H, _id, is_, dts';
 
 COMMENT ON COLUMN Semantic.naming_standard.meaning IS 
 'What this naming element means - e.g., _H means history table with temporal tracking';
@@ -536,8 +536,8 @@ QUALIFY ROW_NUMBER() OVER (ORDER BY hop_count) = 1;
 -- Result:
 -- hop_count: 2
 -- path_tables: Party_H -> PartyProduct_H -> Transaction_H
--- path_joins: JOIN PartyProduct_H ON PartyProduct_H.party_key = Party_H.party_key | 
---             JOIN Transaction_H ON Transaction_H.party_product_key = PartyProduct_H.party_product_key
+-- path_joins: JOIN PartyProduct_H ON PartyProduct_H.party_id = Party_H.party_id | 
+--             JOIN Transaction_H ON Transaction_H.party_product_id = PartyProduct_H.party_product_id
 ```
 
 ---
@@ -604,4 +604,5 @@ Semantic describes all modules via entity_metadata and table_relationship.
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 2.1 | 2026-03-17 | Updated naming convention: {entity}_id = Surrogate Key, {entity}_key = Natural Business Key, aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.0 | 2025-02-09 | Initial Semantic Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |

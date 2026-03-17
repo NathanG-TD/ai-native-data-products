@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Status** | STANDARD |
-| **Last Updated** | 2025-02-27 |
+| **Last Updated** | 2026-03-17 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Memory Module (Agent State & Learning) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -60,7 +60,7 @@ The Memory Module enables **agent learning, continuity, and collaboration** acro
 
 Memory references **entities** (tables), not **instances** (rows):
 - ✅ Store: database_name, table_name (which entities were involved)
-- ❌ Don't store: entity_key, instance IDs (individual records)
+- ❌ Don't store: entity_id, instance IDs (individual records)
 
 **Principle 2: Big Questions, Small Answers**
 
@@ -82,7 +82,7 @@ Memory stores:
 ✅ Outcome: "Generated actionable list, user satisfied"
 
 Memory does NOT store:
-❌ 125,000 individual party_key values
+❌ 125,000 individual party_id values
 ❌ Customer names, details, attributes
 ❌ Query result data (that lives in Domain or temp tables)
 ```
@@ -388,7 +388,7 @@ WHERE referenced_tables LIKE '%Party_H%'
 - ✅ "SQL: SELECT ... FROM Party_H WHERE credit_score > 0.8" (SQL text)
 
 **What Memory does NOT store**:
-- ❌ 125,000 individual party_key values
+- ❌ 125,000 individual party_id values
 - ❌ Customer names from those 125K records
 - ❌ Detailed query results (that data lives in Domain)
 
@@ -715,7 +715,7 @@ COMMENT ON COLUMN Memory.discovered_pattern.created_at IS
 **Involved tables stored as VARCHAR**: `'Domain.Party_H, Prediction.customer_features'`
 
 **What is stored**: Pattern definition (JSON), which tables (VARCHAR), sample size
-**What is NOT stored**: The 15,000 individual party_key values
+**What is NOT stored**: The 15,000 individual party_id values
 
 **Query patterns involving specific tables**:
 ```sql
@@ -884,7 +884,7 @@ ORDER BY query_count DESC;
 **Key Pattern**:
 - Memory stores: Which tables were queried ('Domain.Party_H, Prediction.customer_features')
 - Memory stores: How many results returned (125,000 records)
-- Memory does NOT store: The 125,000 individual party_key values
+- Memory does NOT store: The 125,000 individual party_id values
 - Simple VARCHAR LIKE queries (no JSON parsing needed)
 - For detailed table-by-table analysis, parse comma-separated list in application
 
@@ -1061,7 +1061,7 @@ Memory Stores (SMALL):
 Total: One interaction row (~2KB)
 
 Memory Does NOT Store (WOULD BE BIG):
-❌ 125,000 individual party_key values
+❌ 125,000 individual party_id values
 ❌ Customer names, details, attributes
 ❌ Query result dataset
 Would be: 125,000+ rows (unnecessary)
@@ -1133,8 +1133,9 @@ Discovered Patterns:    Indefinite if validated
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.2 | 2026-03-17 | Updated naming convention: {entity}_id = Surrogate Key, {entity}_key = Natural Business Key; updated all party_key/entity_key references in "do not store" examples to party_id, aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
+| 1.1 | 2025-02-27 | Changed is_active & is_validated to be consistent and align with boolean standards from Domain | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.0 | 2025-02-09 | Initial Memory Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
-| 1.1| 2025-02-27 | Changed is_active & is_validated to be consistent and align with boolean standards from Domain | Nathan Green, Worldwide Data Architecture Team, Teradata |
 
 ---
 

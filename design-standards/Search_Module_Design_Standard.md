@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Status** | STANDARD |
-| **Last Updated** | 2025-02-27 |
+| **Last Updated** | 2026-03-17 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Search Module (Vector Embeddings & Similarity) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -59,8 +59,8 @@ The Search Module enables **semantic search and similarity-based retrieval** usi
 ```
 Vector Store:                         Domain Module:
 ┌──────────────────────┐            ┌──────────────────────┐
-│ entity_key: 1001     │            │ party_key: 1001      │
-│ embedding: [0.23,... │   points   │ party_id: CUST-123   │
+│ entity_key: 1001     │            │ party_id: 1001       │
+│ embedding: [0.23,... │   points   │ party_key: CUST-123  │
 │            ...,0.89] │   ────────>│ legal_name: "John"   │
 │ (384 dimensions)     │            │ description: "..."    │
 └──────────────────────┘            │ ... all attributes    │
@@ -185,7 +185,7 @@ COMMENT ON COLUMN Search.entity_embedding.embedding_key IS
 'Surrogate key for embedding record';
 
 COMMENT ON COLUMN Search.entity_embedding.entity_key IS 
-'Foreign key to Domain entity - references specific entity instance (party_key, product_key, etc.) - NO content duplicated';
+'Foreign key to Domain entity - references specific entity instance (party_id, product_id, etc.) - NO content duplicated';
 
 COMMENT ON COLUMN Search.entity_embedding.entity_type IS 
 'Entity type indicator - PARTY, PRODUCT, DOCUMENT, etc. - identifies which Domain table this entity belongs to';
@@ -269,7 +269,7 @@ PRIMARY INDEX (embedding_key);
 ```sql
 CREATE TABLE Search.product_embedding_BAD (
     embedding_key INTEGER,
-    product_key BIGINT,
+    product_id BIGINT,
     embedding_vector VECTOR,
     -- DON'T DUPLICATE THESE:
     product_name VARCHAR(200),      -- ❌ Already in Domain.Product_H
@@ -284,7 +284,7 @@ CREATE TABLE Search.product_embedding_BAD (
 ```sql
 CREATE TABLE Search.product_embedding_GOOD (
     embedding_key INTEGER,
-    product_key BIGINT,              -- Key only
+    product_id BIGINT,              -- Key only
     entity_type VARCHAR(50),         -- 'PRODUCT'
     source_column VARCHAR(100),      -- 'product_description'
     embedding_vector VECTOR,
@@ -297,7 +297,7 @@ CREATE TABLE Search.product_embedding_GOOD (
 -- Join to Domain for actual content
 SELECT 
     e.embedding_key,
-    e.product_key,
+    e.product_id,
     e.embedding_vector,
     p.product_name,        -- From Domain (not duplicated)
     p.product_description, -- From Domain (not duplicated)
@@ -305,7 +305,7 @@ SELECT
     p.price                -- From Domain (not duplicated)
 FROM Search.product_embedding_GOOD e
 INNER JOIN Domain.Product_H p 
-    ON p.product_key = e.product_key
+    ON p.product_id = e.product_id
    AND p.is_current = 1
 WHERE e.is_current = 1;
 ```
@@ -327,7 +327,7 @@ WHERE e.is_current = 1;
 ```sql
 -- Find top 10 most similar products to query product
 SELECT 
-    ref.entity_key AS similar_product_key,
+    ref.entity_key AS similar_product_id,
     ref.embedding_key,
     dt.distance AS similarity_distance
 FROM TD_VECTORDISTANCE (
@@ -365,7 +365,7 @@ USING
 ```sql
 -- Find similar products with full product details
 SELECT 
-    p.product_id,
+    p.product_key,
     p.product_name,
     p.product_description,
     p.price,
@@ -385,7 +385,7 @@ FROM TD_VECTORDISTANCE (
 ) AS dt
 -- Join to Domain for product details (NOT stored in Search)
 INNER JOIN Domain.Product_H p
-    ON p.product_key = dt.reference_id
+    ON p.product_id = dt.reference_id
    AND p.is_current = 1
    AND p.is_deleted = 0
 ORDER BY dt.distance;
@@ -466,7 +466,7 @@ CREATE TABLE Search.party_embedding (
     embedding_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
     -- Reference to Domain entity (KEY ONLY)
-    party_key BIGINT NOT NULL,  -- FK to Domain.Party_H
+    party_id BIGINT NOT NULL,  -- FK to Domain.Party_H
     
     -- What was embedded (metadata, not content)
     embedded_column VARCHAR(100),  -- 'description', 'notes', 'combined_text'
@@ -484,14 +484,14 @@ PRIMARY INDEX (embedding_key);
 
 -- Query with Domain content (JOIN, no duplication)
 SELECT 
-    p.party_id,
+    p.party_key,
     p.legal_name,
     p.description,      -- From Domain, NOT duplicated in Search
     e.embedding_model,
     e.generated_dts
 FROM Search.party_embedding e
 INNER JOIN Domain.Party_H p
-    ON p.party_key = e.party_key
+    ON p.party_id = e.party_id
    AND p.is_current = 1
    AND p.is_deleted = 0
 WHERE e.is_current = 1
@@ -513,7 +513,7 @@ INSERT INTO Semantic.column_metadata (
 
 -- Search module stores actual embeddings (instance data)
 INSERT INTO Search.party_embedding (
-    party_key, embedded_column, embedding_vector, 
+    party_id, embedded_column, embedding_vector, 
     embedding_dimensions, embedding_model
 ) VALUES (
     1001, 'description', [0.234, 0.567, ..., 0.891]::VECTOR,
@@ -528,8 +528,8 @@ INSERT INTO Search.party_embedding (
 CREATE VIEW Search.v_party_searchable AS
 SELECT 
     -- Entity identification
-    p.party_key,
     p.party_id,
+    p.party_key,
     
     -- Content from Domain (NOT duplicated in Search)
     p.legal_name,
@@ -543,7 +543,7 @@ SELECT
     e.generated_dts
 FROM Domain.Party_H p
 INNER JOIN Search.party_embedding e
-    ON e.party_key = p.party_key
+    ON e.party_id = p.party_id
    AND e.is_current = 1
 WHERE p.is_current = 1
   AND p.is_deleted = 0;
@@ -553,7 +553,7 @@ COMMENT ON VIEW Search.v_party_searchable IS
 
 -- Agent queries view for complete context
 SELECT * FROM Search.v_party_searchable
-WHERE party_id = 'CUST-123';
+WHERE party_key = 'CUST-123';
 ```
 
 ---
@@ -591,13 +591,13 @@ WITH query_vector AS (
     SELECT embedding_vector
     FROM Search.entity_embedding
     WHERE entity_key = (
-        SELECT party_key FROM Domain.Party_H WHERE party_id = 'CUST-123'
+        SELECT party_id FROM Domain.Party_H WHERE party_key = 'CUST-123'
     )
     AND entity_type = 'PARTY'
     AND is_current = 1
 )
 SELECT 
-    p.party_id,
+    p.party_key,
     p.legal_name,
     p.description,          -- From Domain
     dt.distance AS similarity_score
@@ -613,7 +613,7 @@ FROM TD_VECTORDISTANCE (
         TopK(10)
 ) AS dt
 INNER JOIN Domain.Party_H p
-    ON p.party_key = dt.reference_id
+    ON p.party_id = dt.reference_id
    AND p.is_current = 1
 ORDER BY dt.distance;
 ```
@@ -789,8 +789,9 @@ Python APIs: teradatagenai, langchain-teradata, teradataml
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
-| 1.0 | 2025-02-11 | Initial Search Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.2 | 2026-03-17 | Updated naming convention: {entity}_id = Surrogate Key, {entity}_key = Natural Business Key, aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2025-02-27 | Changed is_current to be consistent with Domain module | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.0 | 2025-02-11 | Initial Search Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
 ---
 
 **End of Search Module Design Standard**
