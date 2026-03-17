@@ -9,12 +9,12 @@
 
 ```sql
 INSERT INTO Party_H (
-    party_key, party_id, legal_name,
+    party_id, party_key, legal_name,
     valid_from_dts, valid_to_dts,
     transaction_from_dts, transaction_to_dts,
     is_current, is_deleted
 ) VALUES (
-    NEXT VALUE FOR seq_party_key,
+    NEXT VALUE FOR seq_party_id,
     'CUST-12345', 'Jane Doe',
     TIMESTAMP '2024-01-01 00:00:00+00:00',
     TIMESTAMP '9999-12-31 23:59:59.999999+00:00',
@@ -32,10 +32,10 @@ UPDATE Party_H
 SET valid_to_dts        = TIMESTAMP '2024-06-15 00:00:00+00:00',
     transaction_to_dts  = CURRENT_TIMESTAMP(6),
     is_current          = 0
-WHERE party_key = 1001 AND is_current = 1;
+WHERE party_id = 1001 AND is_current = 1;
 
 -- Step 2: Insert new version (only changed + unchanged attributes)
-INSERT INTO Party_H (party_key, party_id, legal_name,
+INSERT INTO Party_H (party_id, party_key, legal_name,
     valid_from_dts, valid_to_dts, transaction_from_dts, transaction_to_dts,
     is_current, is_deleted)
 VALUES (1001, 'CUST-12345', 'Jane Smith',         -- Name changed
@@ -53,12 +53,12 @@ VALUES (1001, 'CUST-12345', 'Jane Smith',         -- Name changed
 -- Step 1: Close the incorrect version in transaction time only
 UPDATE Party_H
 SET transaction_to_dts = CURRENT_TIMESTAMP(6), is_current = 0
-WHERE party_key = 1001
+WHERE party_id = 1001
   AND valid_from_dts = TIMESTAMP '2024-06-15 00:00:00+00:00'
   AND is_current = 1;
 
 -- Step 2: Insert corrected version with new valid_from_dts
-INSERT INTO Party_H (party_key, party_id, legal_name,
+INSERT INTO Party_H (party_id, party_key, legal_name,
     valid_from_dts, valid_to_dts, transaction_from_dts, transaction_to_dts,
     is_current, is_deleted)
 VALUES (1001, 'CUST-12345', 'Jane Smith',
@@ -78,7 +78,7 @@ SET is_deleted         = 1,
     valid_to_dts       = CURRENT_TIMESTAMP(6),
     transaction_to_dts = CURRENT_TIMESTAMP(6),
     updated_by_user_id = CURRENT_USER
-WHERE party_key = 1001 AND is_current = 1;
+WHERE party_id = 1001 AND is_current = 1;
 -- Record retained; excluded by standard filter: is_current=1 AND is_deleted=0
 ```
 
@@ -89,9 +89,9 @@ WHERE party_key = 1001 AND is_current = 1;
 ### Current State
 
 ```sql
-SELECT party_key, party_id, legal_name
+SELECT party_id, party_key, legal_name
 FROM Party_H
-WHERE party_id = 'CUST-12345'
+WHERE party_key = 'CUST-12345'
   AND is_current = 1 AND is_deleted = 0;
 ```
 
@@ -99,15 +99,15 @@ WHERE party_id = 'CUST-12345'
 
 ```sql
 -- "What was the customer's name on 2024-05-01?"
-SELECT party_key, party_id, legal_name
+SELECT party_id, party_key, legal_name
 FROM Party_H
-WHERE party_id = 'CUST-12345'
+WHERE party_key = 'CUST-12345'
   AND TIMESTAMP '2024-05-01 00:00:00+00:00' BETWEEN valid_from_dts AND valid_to_dts
   AND is_deleted = 0
   AND transaction_from_dts = (
       SELECT MAX(p2.transaction_from_dts)
       FROM Party_H p2
-      WHERE p2.party_key = Party_H.party_key
+      WHERE p2.party_id = Party_H.party_id
         AND p2.transaction_from_dts <= TIMESTAMP '2024-05-01 23:59:59.999999+00:00'
   );
 ```
@@ -116,9 +116,9 @@ WHERE party_id = 'CUST-12345'
 
 ```sql
 -- "What did our DB show on 2024-07-15?"
-SELECT party_key, party_id, legal_name
+SELECT party_id, party_key, legal_name
 FROM Party_H
-WHERE party_id = 'CUST-12345'
+WHERE party_key = 'CUST-12345'
   AND TIMESTAMP '2024-07-15 00:00:00+00:00'
       BETWEEN transaction_from_dts AND transaction_to_dts
   AND is_deleted = 0;
@@ -132,7 +132,7 @@ WHERE party_id = 'CUST-12345'
 
 ```sql
 -- Create sequence for each entity
-CREATE SEQUENCE seq_{entity}_key
+CREATE SEQUENCE seq_{entity}_id
     START WITH 1
     INCREMENT BY 1
     MINVALUE 1
@@ -141,10 +141,10 @@ CREATE SEQUENCE seq_{entity}_key
     CACHE 100;
 
 -- Usage in INSERT
-NEXT VALUE FOR seq_{entity}_key
+NEXT VALUE FOR seq_{entity}_id
 
 -- Cross-module: generate surrogate keys in target module too
-CREATE SEQUENCE seq_{module}_{entity}_key ...
+CREATE SEQUENCE seq_{module}_{entity}_id ...
 ```
 
 **Alternatives**:
@@ -161,7 +161,7 @@ Three-tier approach to balance query performance vs storage:
 ### Tier 1 — Core (always include)
 
 ```
-{entity}_key, {entity}_id
+{entity}_id, {entity}_key
 Temporal columns (valid_from_dts, valid_to_dts, transaction_from_dts, transaction_to_dts)
 is_current, is_deleted
 Key business attributes (what makes this entity useful)
@@ -194,22 +194,22 @@ extraction_dts      TIMESTAMP(6) -- When extracted from source
 
 | Table Type | Recommended PI | Rationale |
 |------------|---------------|-----------|
-| Temporal entity (`_H`) | `NUPI ({entity}_key)` | Multiple versions share key |
+| Temporal entity (`_H`) | `NUPI ({entity}_id)` | Multiple versions share key |
 | Reference data (`_R`) | `UPI ({ref}_code, effective_date)` | Unique per effective period |
-| Relationship (`E1E2_H`) | `NUPI ({entity1}_key)` | Co-locate with primary entity |
-| Current-only | `UPI ({entity}_key)` | One row per entity |
+| Relationship (`E1E2_H`) | `NUPI ({entity1}_id)` | Co-locate with primary entity |
+| Current-only | `UPI ({entity}_id)` | One row per entity |
 
 ### Secondary Indexes (selective — only when query is frequent and unacceptable without it)
 
 ```sql
 -- Natural key lookup (when PI is surrogate)
-CREATE UNIQUE INDEX idx_{entity}_id_current
-ON {Entity}_H ({entity}_id)
+CREATE UNIQUE INDEX idx_{entity}_key_current
+ON {Entity}_H ({entity}_key)
 WHERE is_current = 1 AND is_deleted = 0;
 
 -- FK join optimization
 CREATE INDEX idx_{rel}_fk_{entity2}
-ON {Entity1}{Entity2}_H ({entity2}_key)
+ON {Entity1}{Entity2}_H ({entity2}_id)
 WHERE is_current = 1 AND is_deleted = 0;
 
 -- Composite filter
@@ -222,19 +222,19 @@ ON {Entity}_H ({type}_code, is_current, is_deleted);
 ```sql
 -- Materialized current view (avoid if table changes frequently)
 CREATE JOIN INDEX jidx_{entity}_current AS
-SELECT {entity}_key, {entity}_id, {key_business_columns}
+SELECT {entity}_id, {entity}_key, {key_business_columns}
 FROM {Entity}_H
 WHERE is_current = 1 AND is_deleted = 0
   AND transaction_to_dts = TIMESTAMP '9999-12-31 23:59:59.999999+00:00'
-PRIMARY INDEX ({entity}_key);
+PRIMARY INDEX ({entity}_id);
 ```
 
 ### Statistics Collection
 
 ```sql
 COLLECT STATISTICS
-COLUMN ({entity}_key),
 COLUMN ({entity}_id),
+COLUMN ({entity}_key),
 COLUMN ({type}_code),
 COLUMN (is_current),
 COLUMN (is_deleted),
@@ -303,7 +303,7 @@ CREATE VIEW {Entity}_WithQuality AS
 SELECT e.*, q.quality_score, q.issue_count
 FROM {Entity}_Current e
 LEFT JOIN Observability.DataQualityAssessment_O q
-    ON q.entity_key = e.{entity}_key
+    ON q.entity_id = e.{entity}_id
    AND q.entity_type = '{ENTITY}'
    AND q.is_latest = 1;
 ```

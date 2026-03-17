@@ -28,8 +28,8 @@ Before writing DDL, confirm the following have been gathered:
 
 For each Domain entity table (`_H`):
 
-- [ ] `{entity}_key` — BIGINT surrogate key present
-- [ ] `{entity}_id` — Natural/business key present
+- [ ] `{entity}_id` — BIGINT surrogate key present
+- [ ] `{entity}_key` — Natural/business key present
 - [ ] Temporal tracking supports point-in-time reconstruction
 - [ ] `is_current` column present (BYTEINT)
 - [ ] `is_deleted` column present (BYTEINT)
@@ -48,9 +48,9 @@ For reference data tables (`_R`):
 
 For relationship tables:
 
-- [ ] Both FKs (`{entity1}_key`, `{entity2}_key`) present with descriptive names
+- [ ] Both FKs (`{entity1}_id`, `{entity2}_id`) present with descriptive names
 - [ ] Same temporal pattern as entity tables (consistency for agent learning)
-- [ ] `PRIMARY INDEX ({entity1}_key)` for co-location with primary entity
+- [ ] `PRIMARY INDEX ({entity1}_id)` for co-location with primary entity
 
 ---
 
@@ -67,8 +67,8 @@ For relationship tables:
 
 Apply these checks across ALL entities (consistency is the goal — agents learn patterns):
 
-- [ ] All surrogate keys follow `{entity}_key` pattern
-- [ ] All natural keys follow `{entity}_id` pattern
+- [ ] All surrogate keys follow `{entity}_id` pattern
+- [ ] All natural keys follow `{entity}_key` pattern
 - [ ] Temporal column names identical across all entities
 - [ ] Boolean flags use `is_` prefix consistently
 - [ ] Type/status columns use `_code` suffix consistently
@@ -96,7 +96,7 @@ Apply these checks across ALL entities (consistency is the goal — agents learn
 
 4. **Navigate relationships?**
    - FK column names tell the agent exactly what they reference ✅
-   - e.g. `party_key` not `fk1`
+   - e.g. `party_id` not `fk1`
 
 5. **Generate valid queries** for any entity programmatically?
    - Same key/flag/temporal column names across all entities ✅
