@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Status** | GUIDANCE |
-| **Last Updated** | 2026-03-17 |
+| **Last Updated** | 2026-03-18 |
 | **Owner** | Data Architecture |
 | **Scope** | Cross-Module Data Management Guidance |
 | **Type** | Recommended Practices |
@@ -119,7 +119,7 @@ transaction_to_dts   TIMESTAMP(6) WITH TIME ZONE NOT NULL
     DEFAULT TIMESTAMP '9999-12-31 23:59:59.999999+00:00'
     COMMENT 'When this version was superseded in database',
 
-is_current_version  BYTEINT NOT NULL DEFAULT 1
+is_current  BYTEINT NOT NULL DEFAULT 1
     COMMENT '1 = Current version, 0 = Historical version',
 ```
 
@@ -160,7 +160,7 @@ INSERT INTO Party_H (
     party_id, party_key, legal_name,
     valid_from_dts, valid_to_dts,
     transaction_from_dts, transaction_to_dts,
-    is_current_version, is_deleted
+    is_current, is_deleted
 ) VALUES (
     1001, 'CUST-12345', 'Jane Doe',
     TIMESTAMP '2024-01-01 00:00:00+00:00',
@@ -178,15 +178,15 @@ INSERT INTO Party_H (
 UPDATE Party_H
 SET valid_to_dts = TIMESTAMP '2024-06-15 00:00:00+00:00',
     transaction_to_dts = CURRENT_TIMESTAMP(6),
-    is_current_version = 0
-WHERE party_id = 1001 AND is_current_version = 1;
+    is_current = 0
+WHERE party_id = 1001 AND is_current = 1;
 
 -- Step 2: Insert new version
 INSERT INTO Party_H (
     party_id, party_key, legal_name,
     valid_from_dts, valid_to_dts,
     transaction_from_dts, transaction_to_dts,
-    is_current_version, is_deleted
+    is_current, is_deleted
 ) VALUES (
     1001, 'CUST-12345', 'Jane Smith',  -- NAME CHANGED
     TIMESTAMP '2024-06-15 00:00:00+00:00',  -- When change occurred
@@ -206,17 +206,17 @@ INSERT INTO Party_H (
 -- Step 1: Close incorrect version in transaction time
 UPDATE Party_H
 SET transaction_to_dts = CURRENT_TIMESTAMP(6),
-    is_current_version = 0
+    is_current = 0
 WHERE party_id = 1001
   AND valid_from_dts = TIMESTAMP '2024-06-15 00:00:00+00:00'
-  AND is_current_version = 1;
+  AND is_current = 1;
 
 -- Step 2: Insert corrected version with new transaction time
 INSERT INTO Party_H (
     party_id, party_key, legal_name,
     valid_from_dts, valid_to_dts,
     transaction_from_dts, transaction_to_dts,
-    is_current_version, is_deleted
+    is_current, is_deleted
 ) VALUES (
     1001, 'CUST-12345', 'Jane Smith',
     TIMESTAMP '2024-06-10 00:00:00+00:00',  -- CORRECTED valid time
@@ -239,7 +239,7 @@ INSERT INTO Party_H (
 SELECT party_id, party_key, legal_name
 FROM Party_H
 WHERE party_key = 'CUST-12345'
-  AND is_current_version = 1
+  AND is_current = 1
   AND is_deleted = 0;
 ```
 
@@ -318,7 +318,7 @@ valid_from_dts      TIMESTAMP(6) WITH TIME ZONE NOT NULL
 valid_to_dts        TIMESTAMP(6) WITH TIME ZONE NOT NULL
 transaction_from_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL
 transaction_to_dts   TIMESTAMP(6) WITH TIME ZONE NOT NULL
-is_current_version  BYTEINT NOT NULL DEFAULT 1
+is_current  BYTEINT NOT NULL DEFAULT 1
 is_deleted          BYTEINT NOT NULL DEFAULT 0
 ```
 
@@ -416,7 +416,7 @@ UNIQUE PRIMARY INDEX (party_id, valid_from_dts, transaction_from_dts);
 -- Secondary index on natural key for lookups
 CREATE UNIQUE INDEX idx_party_natural_key
 ON Party_H (party_key)
-WHERE is_current_version = 1 AND is_deleted = 0;
+WHERE is_current = 1 AND is_deleted = 0;
 ```
 
 ### 4.3 Surrogate Key Generation
@@ -506,23 +506,23 @@ deleted_reason VARCHAR(500)
 UPDATE Party_H
 SET valid_to_dts = CURRENT_TIMESTAMP(6),
     transaction_to_dts = CURRENT_TIMESTAMP(6),
-    is_current_version = 0
+    is_current = 0
 WHERE party_id = 1001
-  AND is_current_version = 1;
+  AND is_current = 1;
 
 -- Step 2: Insert soft-deleted version
 INSERT INTO Party_H (
     party_id, party_key, legal_name,
     valid_from_dts, valid_to_dts,
     transaction_from_dts, transaction_to_dts,
-    is_current_version, is_deleted
+    is_current, is_deleted
 ) VALUES (
     1001, 'CUST-12345', 'Jane Smith',
     CURRENT_TIMESTAMP(6),  -- Deleted as of now
     TIMESTAMP '9999-12-31 23:59:59.999999+00:00',
     CURRENT_TIMESTAMP(6),
     TIMESTAMP '9999-12-31 23:59:59.999999+00:00',
-    1,  -- is_current_version = 1 (this IS the current state: deleted)
+    1,  -- is_current = 1 (this IS the current state: deleted)
     1   -- is_deleted = 1
 );
 
@@ -541,16 +541,16 @@ INSERT INTO Observability.ChangeEvent_H (
 ```sql
 -- Current active records only (most common)
 SELECT * FROM Party_H
-WHERE is_current_version = 1
+WHERE is_current = 1
   AND is_deleted = 0;
 
 -- Include deleted records
 SELECT * FROM Party_H
-WHERE is_current_version = 1;
+WHERE is_current = 1;
 
 -- Only deleted records
 SELECT * FROM Party_H
-WHERE is_current_version = 1
+WHERE is_current = 1
   AND is_deleted = 1;
 ```
 
@@ -668,7 +668,7 @@ LEFT JOIN Observability.DataLineage_H dl
     ON dl.lineage_key = p.lineage_key
 LEFT JOIN Observability.DataQuality_H dq 
     ON dq.quality_key = p.quality_key
-WHERE p.is_current_version = 1;
+WHERE p.is_current = 1;
 ```
 
 **Overhead**: 3 BIGINT columns (24 bytes) vs 15+ columns (500+ bytes)
@@ -700,7 +700,7 @@ LEFT JOIN (
     FROM Observability.DataQuality_H
     WHERE entity_type = 'PARTY'
 ) dq ON dq.entity_key = p.party_id AND dq.rn = 1
-WHERE p.is_current_version = 1;
+WHERE p.is_current = 1;
 ```
 
 **Overhead**: 0 additional columns, join on indexed columns
@@ -727,7 +727,7 @@ LEFT JOIN Observability.DataLineage_H dl
     ON dl.lineage_key = p.lineage_key
 LEFT JOIN Observability.DataQuality_H dq 
     ON dq.quality_key = p.quality_key
-WHERE p.is_current_version = 1;
+WHERE p.is_current = 1;
 
 -- Agent query (simple)
 SELECT * FROM Party_Complete WHERE party_key = 'CUST-12345';
@@ -866,7 +866,7 @@ CREATE TABLE Party_H (
 -- Agent query
 SELECT party_key, legal_name, data_quality_score
 FROM Party_H
-WHERE is_current_version = 1
+WHERE is_current = 1
   AND data_quality_score >= 0.75;  -- High quality only
 ```
 
@@ -899,7 +899,7 @@ INNER JOIN (
     FROM Observability.DataQuality_H
     WHERE entity_type = 'PARTY'
 ) dq ON dq.entity_key = p.party_id AND dq.rn = 1
-WHERE p.is_current_version = 1
+WHERE p.is_current = 1
   AND dq.quality_score >= 0.75;
 ```
 
@@ -920,7 +920,7 @@ INNER JOIN (
     FROM Observability.DataQuality_H
     WHERE entity_type = 'PARTY'
 ) dq ON dq.entity_key = p.party_id AND dq.rn = 1
-WHERE p.is_current_version = 1
+WHERE p.is_current = 1
   AND p.is_deleted = 0
   AND dq.quality_score >= 0.75;
 
@@ -1467,6 +1467,7 @@ START: What is table volume?
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.2 | 2026-03-18 | Renamed is_current_version → is_current throughout, aligned with Domain Module Design Standard naming convention | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2026-03-17 | Updated naming convention throughout: {entity}_id = Surrogate Key (BIGINT), {entity}_key = Natural Business Key (VARCHAR), aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.0 | 2025-02-09 | Initial Advocated Data Management Standards | Data Architecture |
 
