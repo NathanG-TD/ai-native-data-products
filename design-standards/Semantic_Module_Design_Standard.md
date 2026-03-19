@@ -1,5 +1,5 @@
 # Semantic Module Design Standard
-## AI-Native Data Product Architecture - Version 2.0 (Tested & Validated)
+## AI-Native Data Product Architecture - Version 2.2 (Tested & Validated)
 
 ---
 
@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 2.1 |
+| **Version** | 2.2 |
 | **Status** | STANDARD - Tested on Teradata |
-| **Last Updated** | 2026-03-17 |
+| **Last Updated** | 2026-03-18 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Semantic Module (Knowledge & Meaning) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -61,7 +61,7 @@ Semantic module helps agents write correct SQL by answering:
 
 ```sql
 CREATE TABLE Semantic.entity_metadata (
-    entity_metadata_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    entity_metadata_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     entity_name VARCHAR(100) NOT NULL,
     entity_description VARCHAR(1000) NOT NULL,
     module_name VARCHAR(50) NOT NULL,
@@ -78,12 +78,12 @@ CREATE TABLE Semantic.entity_metadata (
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (entity_metadata_key);
+PRIMARY INDEX (entity_metadata_id);
 
 COMMENT ON TABLE Semantic.entity_metadata IS 
 'Entity (table) catalog - describes all tables across all modules for agent discovery';
 
-COMMENT ON COLUMN Semantic.entity_metadata.entity_metadata_key IS 
+COMMENT ON COLUMN Semantic.entity_metadata.entity_metadata_id IS 
 'Surrogate key for entity metadata record';
 
 COMMENT ON COLUMN Semantic.entity_metadata.entity_name IS 
@@ -136,7 +136,7 @@ COMMENT ON COLUMN Semantic.entity_metadata.updated_at IS
 
 ```sql
 CREATE TABLE Semantic.column_metadata (
-    column_metadata_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    column_metadata_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     database_name VARCHAR(100) NOT NULL,
     table_name VARCHAR(100) NOT NULL,
     column_name VARCHAR(100) NOT NULL,
@@ -151,12 +151,12 @@ CREATE TABLE Semantic.column_metadata (
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (column_metadata_key);
+PRIMARY INDEX (column_metadata_id);
 
 COMMENT ON TABLE Semantic.column_metadata IS 
 'Column (attribute) metadata - describes column meanings, data classifications, and validation rules';
 
-COMMENT ON COLUMN Semantic.column_metadata.column_metadata_key IS 
+COMMENT ON COLUMN Semantic.column_metadata.column_metadata_id IS 
 'Surrogate key for column metadata record';
 
 COMMENT ON COLUMN Semantic.column_metadata.database_name IS 
@@ -203,7 +203,7 @@ COMMENT ON COLUMN Semantic.column_metadata.updated_at IS
 
 ```sql
 CREATE TABLE Semantic.naming_standard (
-    naming_standard_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    naming_standard_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     standard_type VARCHAR(50) NOT NULL,
     standard_value VARCHAR(100) NOT NULL,
     meaning VARCHAR(500) NOT NULL,
@@ -213,12 +213,12 @@ CREATE TABLE Semantic.naming_standard (
     is_active CHAR(1) DEFAULT 'Y',
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (naming_standard_key);
+PRIMARY INDEX (naming_standard_id);
 
 COMMENT ON TABLE Semantic.naming_standard IS 
 'Naming convention standards - documents naming patterns for agent interpretation';
 
-COMMENT ON COLUMN Semantic.naming_standard.naming_standard_key IS 
+COMMENT ON COLUMN Semantic.naming_standard.naming_standard_id IS 
 'Surrogate key for naming standard record';
 
 COMMENT ON COLUMN Semantic.naming_standard.standard_type IS 
@@ -252,7 +252,7 @@ COMMENT ON COLUMN Semantic.naming_standard.created_at IS
 
 ```sql
 CREATE TABLE Semantic.data_product_map (
-    module_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    module_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
     -- Module identification
     module_name VARCHAR(50) NOT NULL,
@@ -278,12 +278,12 @@ CREATE TABLE Semantic.data_product_map (
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (module_key);
+PRIMARY INDEX (module_id);
 
 COMMENT ON TABLE Semantic.data_product_map IS 
 'Module registry - agents discover deployed modules and their physical locations';
 
-COMMENT ON COLUMN Semantic.data_product_map.module_key IS 
+COMMENT ON COLUMN Semantic.data_product_map.module_id IS 
 'Surrogate key for module registry record';
 
 COMMENT ON COLUMN Semantic.data_product_map.module_name IS 
@@ -361,7 +361,7 @@ ORDER BY module_name;
 
 ```sql
 CREATE TABLE Semantic.table_relationship (
-    relationship_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    relationship_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     relationship_name VARCHAR(100) NOT NULL,
     relationship_description VARCHAR(1000),
     source_database VARCHAR(100),
@@ -378,12 +378,12 @@ CREATE TABLE Semantic.table_relationship (
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (relationship_key);
+PRIMARY INDEX (relationship_id);
 
 COMMENT ON TABLE Semantic.table_relationship IS 
 'Table-level relationship metadata - describes how tables join for correct SQL generation by agents';
 
-COMMENT ON COLUMN Semantic.table_relationship.relationship_key IS 
+COMMENT ON COLUMN Semantic.table_relationship.relationship_id IS 
 'Surrogate key for relationship metadata record';
 
 COMMENT ON COLUMN Semantic.table_relationship.relationship_name IS 
@@ -604,5 +604,6 @@ Semantic describes all modules via entity_metadata and table_relationship.
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 2.2 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed {table}_key → {table}_id for all GENERATED ALWAYS AS IDENTITY columns | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 2.1 | 2026-03-17 | Updated naming convention: {entity}_id = Surrogate Key, {entity}_key = Natural Business Key, aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.0 | 2025-02-09 | Initial Semantic Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |

@@ -1,5 +1,5 @@
 # Memory Module Design Standard
-## AI-Native Data Product Architecture - Version 1.0
+## AI-Native Data Product Architecture - Version 1.3
 
 ---
 
@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.2 |
+| **Version** | 1.3 |
 | **Status** | STANDARD |
-| **Last Updated** | 2026-03-17 |
+| **Last Updated** | 2026-03-18 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Memory Module (Agent State & Learning) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -67,7 +67,7 @@ Memory references **entities** (tables), not **instances** (rows):
 Agents process millions of records to answer questions. Memory stores the **metadata** about those processes:
 - ✅ Store: SQL executed, patterns used, outcomes, decisions
 - ✅ Store: "Analyzed 5M Party records using this query pattern"
-- ❌ Don't store: Individual keys from those 5M records
+- ❌ Don't store: Individual keys/IDs from those 5M records
 - ❌ Don't store: Results of the query (that's in Domain)
 
 **Why this matters**:
@@ -102,7 +102,7 @@ Memory does NOT store:
    - What SQL/queries were executed
    - Which entities (tables) were involved
    - What decisions were made
-   - **NOT individual record keys from results**
+   - **NOT individual record keys/IDs from results**
 
 2. **Agent Learning Metadata**
    - Successful strategies and patterns
@@ -125,7 +125,7 @@ Memory does NOT store:
 
 - ❌ **Business domain data** → Domain Module
 - ❌ **Query results** → Domain Module or temporary tables
-- ❌ **Individual record keys** → Don't track millions of keys
+- ❌ **Individual record keys/IDs** → Don't track millions of keys/IDs
 - ❌ **Detailed customer/product data** → Domain Module
 
 **Key Distinction**:
@@ -146,7 +146,7 @@ Memory does NOT store:
 - Search: "Here are the 10 most similar items"
 
 **Memory should NOT try to store**:
-- ❌ Individual keys from 50M query results
+- ❌ Individual keys/IDs from 50M query results
 - ❌ Details of 2B transactions processed
 - ❌ All 10M products that were searched
 
@@ -177,10 +177,10 @@ Memory does NOT store:
 
 ```sql
 CREATE TABLE Memory.agent_session (
-    session_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    session_id VARCHAR(100) NOT NULL,
-    agent_id VARCHAR(100) NOT NULL,
-    user_id VARCHAR(100),
+    session_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    session_key VARCHAR(100) NOT NULL,
+    agent_key VARCHAR(100) NOT NULL,
+    user_key VARCHAR(100),
     
     -- Session context
     session_start_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL,
@@ -193,26 +193,26 @@ CREATE TABLE Memory.agent_session (
     
     -- Privacy scope
     scope_level VARCHAR(20) NOT NULL,  -- 'USER', 'TEAM', 'ORGANIZATION', 'AGENT'
-    scope_identifier VARCHAR(100),     -- user_id, team_id, org_id, agent_id
+    scope_identifier VARCHAR(100),     -- user_key, team_key, org_key, agent_key
     
     -- Metadata
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (session_key);
+PRIMARY INDEX (session_id);
 
 COMMENT ON TABLE Memory.agent_session IS 
 'Agent session state - tracks active and historical agent sessions for continuity across interactions';
 
-COMMENT ON COLUMN Memory.agent_session.session_key IS 
+COMMENT ON COLUMN Memory.agent_session.session_id IS 
 'Surrogate key for session record';
 
-COMMENT ON COLUMN Memory.agent_session.session_id IS 
+COMMENT ON COLUMN Memory.agent_session.session_key IS 
 'Business session identifier - unique ID for tracking session across systems';
 
-COMMENT ON COLUMN Memory.agent_session.agent_id IS 
+COMMENT ON COLUMN Memory.agent_session.agent_key IS 
 'Agent identifier - which agent instance is handling this session';
 
-COMMENT ON COLUMN Memory.agent_session.user_id IS 
+COMMENT ON COLUMN Memory.agent_session.user_key IS 
 'User identifier - which user is interacting with agent';
 
 COMMENT ON COLUMN Memory.agent_session.session_start_dts IS 
@@ -234,7 +234,7 @@ COMMENT ON COLUMN Memory.agent_session.scope_level IS
 'Privacy scope level - USER (private), TEAM (team-shared), ORGANIZATION (company-wide), AGENT (agent-specific)';
 
 COMMENT ON COLUMN Memory.agent_session.scope_identifier IS 
-'Scope identifier - user_id for USER scope, team_id for TEAM scope, etc. - enforces privacy boundaries';
+'Scope identifier - user_key for USER scope, team_key for TEAM scope, etc. - enforces privacy boundaries';
 
 COMMENT ON COLUMN Memory.agent_session.created_at IS 
 'Timestamp when session record was created';
@@ -244,8 +244,8 @@ COMMENT ON COLUMN Memory.agent_session.created_at IS
 
 ```sql
 CREATE TABLE Memory.agent_interaction (
-    interaction_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    session_key INTEGER NOT NULL,  -- FK to agent_session
+    interaction_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    session_id INTEGER NOT NULL,  -- FK to agent_session
     
     -- Interaction details
     interaction_seq INTEGER NOT NULL,
@@ -276,15 +276,15 @@ CREATE TABLE Memory.agent_interaction (
     -- Metadata
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (interaction_key);
+PRIMARY INDEX (interaction_id);
 
 COMMENT ON TABLE Memory.agent_interaction IS 
 'Agent interaction log - records what agent did, which tables were involved, and outcomes for learning and audit';
 
-COMMENT ON COLUMN Memory.agent_interaction.interaction_key IS 
+COMMENT ON COLUMN Memory.agent_interaction.interaction_id IS 
 'Surrogate key for interaction record';
 
-COMMENT ON COLUMN Memory.agent_interaction.session_key IS 
+COMMENT ON COLUMN Memory.agent_interaction.session_id IS 
 'Foreign key to agent_session - links interaction to parent session';
 
 COMMENT ON COLUMN Memory.agent_interaction.interaction_seq IS 
@@ -327,7 +327,7 @@ COMMENT ON COLUMN Memory.agent_interaction.scope_level IS
 'Privacy scope - USER, TEAM, ORGANIZATION, AGENT - determines who can access this interaction';
 
 COMMENT ON COLUMN Memory.agent_interaction.scope_identifier IS 
-'Scope identifier - user_id, team_id, org_id, or agent_id matching scope_level';
+'Scope identifier - user_key, team_key, org_key, or agent_key matching scope_level';
 
 COMMENT ON COLUMN Memory.agent_interaction.created_at IS 
 'Timestamp when interaction record was created';
@@ -414,7 +414,7 @@ WHERE referenced_tables LIKE '%Party_H%'
 
 ```sql
 CREATE TABLE Memory.learned_strategy (
-    strategy_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    strategy_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     strategy_name VARCHAR(100) NOT NULL,
     strategy_description VARCHAR(1000),
     
@@ -444,12 +444,12 @@ CREATE TABLE Memory.learned_strategy (
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (strategy_key);
+PRIMARY INDEX (strategy_id);
 
 COMMENT ON TABLE Memory.learned_strategy IS 
 'Strategies learned by agents - successful patterns and approaches discovered through experience';
 
-COMMENT ON COLUMN Memory.learned_strategy.strategy_key IS 
+COMMENT ON COLUMN Memory.learned_strategy.strategy_id IS 
 'Surrogate key for learned strategy record';
 
 COMMENT ON COLUMN Memory.learned_strategy.strategy_name IS 
@@ -474,7 +474,7 @@ COMMENT ON COLUMN Memory.learned_strategy.discovered_dts IS
 'When strategy was discovered - timestamp of learning event';
 
 COMMENT ON COLUMN Memory.learned_strategy.discovered_by_agent IS 
-'Agent that discovered this strategy - agent_id that learned this pattern';
+'Agent that discovered this strategy - agent_key that learned this pattern';
 
 COMMENT ON COLUMN Memory.learned_strategy.times_used IS 
 'Usage count - how many times this strategy has been applied';
@@ -486,7 +486,7 @@ COMMENT ON COLUMN Memory.learned_strategy.scope_level IS
 'Privacy scope - USER, TEAM, ORGANIZATION, AGENT - determines who can use this strategy';
 
 COMMENT ON COLUMN Memory.learned_strategy.scope_identifier IS 
-'Scope identifier - user_id, team_id, org_id, or agent_id for access control';
+'Scope identifier - user_key, team_key, org_key, or agent_key for access control';
 
 COMMENT ON COLUMN Memory.learned_strategy.is_active IS 
 'Active indicator - 1 = strategy is active and should be used, 0 = deprecated';
@@ -526,10 +526,10 @@ INSERT INTO Memory.learned_strategy (
 
 ```sql
 CREATE TABLE Memory.user_preference (
-    preference_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    preference_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
     -- User identification
-    user_id VARCHAR(100) NOT NULL,
+    user_key VARCHAR(100) NOT NULL,
     user_group VARCHAR(100),
     
     -- Preference definition
@@ -555,16 +555,16 @@ CREATE TABLE Memory.user_preference (
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (preference_key);
+PRIMARY INDEX (preference_id);
 
 COMMENT ON TABLE Memory.user_preference IS 
 'User and stakeholder preferences learned from interactions - enables personalized agent behavior';
 
-COMMENT ON COLUMN Memory.user_preference.preference_key IS 
+COMMENT ON COLUMN Memory.user_preference.preference_id IS 
 'Surrogate key for preference record';
 
-COMMENT ON COLUMN Memory.user_preference.user_id IS 
-'User identifier - which user this preference belongs to';
+COMMENT ON COLUMN Memory.user_preference.user_key IS 
+'User identifier name - which user this preference belongs to';
 
 COMMENT ON COLUMN Memory.user_preference.user_group IS 
 'User group or team - for group-level preferences';
@@ -613,7 +613,7 @@ COMMENT ON COLUMN Memory.user_preference.updated_at IS
 
 ```sql
 CREATE TABLE Memory.discovered_pattern (
-    pattern_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    pattern_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     pattern_name VARCHAR(100) NOT NULL,
     pattern_description VARCHAR(1000),
     
@@ -643,12 +643,12 @@ CREATE TABLE Memory.discovered_pattern (
     is_active BYTEINT NOT NULL DEFAULT 1,
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (pattern_key);
+PRIMARY INDEX (pattern_id);
 
 COMMENT ON TABLE Memory.discovered_pattern IS 
 'Patterns discovered by agents through data analysis - stores pattern metadata and statistical support, NOT individual record details';
 
-COMMENT ON COLUMN Memory.discovered_pattern.pattern_key IS 
+COMMENT ON COLUMN Memory.discovered_pattern.pattern_id IS 
 'Surrogate key for discovered pattern record';
 
 COMMENT ON COLUMN Memory.discovered_pattern.pattern_name IS 
@@ -679,7 +679,7 @@ COMMENT ON COLUMN Memory.discovered_pattern.discovered_dts IS
 'When pattern was discovered - timestamp of discovery event';
 
 COMMENT ON COLUMN Memory.discovered_pattern.discovered_by_agent IS 
-'Agent that discovered pattern - agent_id that performed analysis';
+'Agent that discovered pattern - agent_key that performed analysis';
 
 COMMENT ON COLUMN Memory.discovered_pattern.is_validated IS 
 'Validation status - 1 = pattern validated by human expert or testing, 0 = discovered but not yet validated';
@@ -691,7 +691,7 @@ COMMENT ON COLUMN Memory.discovered_pattern.scope_level IS
 'Privacy scope - USER, TEAM, ORGANIZATION, AGENT - determines who can access this pattern';
 
 COMMENT ON COLUMN Memory.discovered_pattern.scope_identifier IS 
-'Scope identifier - user_id, team_id, org_id, or agent_id for access control';
+'Scope identifier - user_key, team_key, org_key, or agent_key for access control';
 
 COMMENT ON COLUMN Memory.discovered_pattern.is_active IS 
 'Active indicator - 1 = pattern active, 0 = deprecated or invalidated';
@@ -762,7 +762,7 @@ WHERE involved_tables LIKE '%Party_H%'
 ```sql
 -- Standard scope columns (required in all Memory tables)
 scope_level VARCHAR(20) NOT NULL,      -- 'USER', 'TEAM', 'ORGANIZATION', 'AGENT'
-scope_identifier VARCHAR(100) NOT NULL -- user_id, team_id, org_id, agent_id
+scope_identifier VARCHAR(100) NOT NULL -- user_key, team_key, org_key, agent_key
 ```
 
 ### 5.2 Privacy Patterns
@@ -770,7 +770,7 @@ scope_identifier VARCHAR(100) NOT NULL -- user_id, team_id, org_id, agent_id
 ```sql
 -- Query user-specific memory only
 SELECT * FROM Memory.user_preference
-WHERE user_id = 'john.doe@company.com'
+WHERE user_key = 'john.doe@company.com'
   AND scope_level = 'USER';
 
 -- Query team-shared memory
@@ -787,9 +787,9 @@ WHERE scope_level = 'ORGANIZATION'
 ### 5.3 Data Minimization
 
 **Store minimal PII in Memory**:
-- ✅ Store user_id (identifier)
+- ✅ Store user_key (identifier)
 - ❌ Don't store user names, emails, demographics (join to Domain if needed)
-- ✅ Store entity keys (references)
+- ✅ Store entity IDs (references)
 - ❌ Don't store entity content (join to Domain/other modules)
 
 ---
@@ -835,7 +835,7 @@ WHERE success_count * 1.0 / total_count > 0.8;
 -- View: Agent interactions summary (no JSON parsing needed!)
 CREATE VIEW Memory.v_interactions_summary AS
 SELECT 
-    ai.session_key,
+    ai.session_id,
     ai.interaction_seq,
     ai.interaction_type,
     ai.user_input,
@@ -895,13 +895,13 @@ ORDER BY query_count DESC;
 -- Embed current session context, find similar historical sessions
 
 WITH current_session_embedding AS (
-    SELECT session_id, session_context_json,
+    SELECT session_key, session_context_json,
            embedding_vector  -- Generated from session description
     FROM Memory.agent_session
-    WHERE session_id = 'S-CURRENT'
+    WHERE session_key = 'S-CURRENT'
 )
 SELECT 
-    past.session_id,
+    past.session_key,
     past.session_goal,
     past.session_status,
     dt.distance AS similarity_score
@@ -912,13 +912,13 @@ FROM TD_VECTORDISTANCE (
       AND ReferenceTable.is_current = 'Y'
     USING
         TargetFeatureColumns('embedding_vector')
-        RefIDColumn('entity_key')
+        RefIDColumn('entity_id')
         RefFeatureColumns('embedding_vector')
         DistanceMeasure('cosine')
         TopK(5)
 ) AS dt
 INNER JOIN Memory.agent_session past
-    ON past.session_key = dt.reference_id
+    ON past.session_id = dt.reference_id
 ORDER BY dt.distance;
 ```
 
@@ -964,9 +964,9 @@ ORDER BY ls.success_rate DESC;
 - [ ] Learning strategy tables defined
 - [ ] User preference structure defined
 - [ ] Privacy scope levels defined
-- [ ] **NO content duplication** (keys only verified)
+- [ ] **NO content duplication** (ids only verified)
 - [ ] Integration with Observability (learning from outcomes)
-- [ ] Integration with Domain (entity references by key)
+- [ ] Integration with Domain (entity references by id)
 - [ ] Integration with Search (finding similar sessions/patterns)
 - [ ] Retention policies documented
 - [ ] Privacy policies documented
@@ -976,7 +976,7 @@ ORDER BY ls.success_rate DESC;
 **A good Memory Module should:**
 
 - ✅ Store agent state and learnings (not business data)
-- ✅ Reference entities by key only (no content duplication)
+- ✅ Reference entities by id only (no content duplication)
 - ✅ Enforce privacy scoping (USER, TEAM, ORG, AGENT)
 - ✅ Enable session continuity
 - ✅ Support cross-agent learning
@@ -993,7 +993,7 @@ ORDER BY ls.success_rate DESC;
 ```
 ✅ Store agent metadata (NOT business data)
 ✅ Reference entities at TABLE level (VARCHAR: 'database.table, database.table')
-✅ Don't store instance keys from millions of query results
+✅ Don't store instance keys/Ids from millions of query results
 ✅ "Big Questions, Small Answers" - Store SQL/patterns/outcomes, not result data
 ✅ Simple LIKE queries on referenced_tables VARCHAR column
 ✅ Use JSON for complex/flexible structures (agent processes externally)
@@ -1072,11 +1072,11 @@ Would be: 125,000+ rows (unnecessary)
 ```
 Every Memory record must include:
 - scope_level: 'USER' | 'TEAM' | 'ORGANIZATION' | 'AGENT'
-- scope_identifier: user_id | team_id | org_id | agent_id
+- scope_identifier: user_key | team_key | org_key | agent_key
 
 Query patterns:
-- User memory: WHERE scope_level = 'USER' AND scope_identifier = {user_id}
-- Team memory: WHERE scope_level = 'TEAM' AND scope_identifier = {team_id}
+- User memory: WHERE scope_level = 'USER' AND scope_identifier = {user_key}
+- Team memory: WHERE scope_level = 'TEAM' AND scope_identifier = {team_key}
 - Org memory:  WHERE scope_level = 'ORGANIZATION'
 ```
 
@@ -1095,7 +1095,7 @@ Memory → Observability:  Learn from outcomes (what worked)
 Memory + Search:         Find similar sessions/patterns
 Memory + Semantic:       Apply business rules learned
 Memory + Prediction:     Inform feature selection
-Memory references Domain: By table name only (not instance keys)
+Memory references Domain: By table name only (not instance keys/IDs)
 ```
 
 ### What Memory Stores vs Doesn't Store
@@ -1110,7 +1110,7 @@ STORES (Metadata):
 ✅ Pattern learned: "Filter on is_current first improves performance 3x"
 
 DOES NOT STORE (Instance Data):
-❌ 5M individual record keys
+❌ 5M individual record keys/IDs
 ❌ Customer names from those 5M records
 ❌ Transaction details
 ❌ Query result dataset
@@ -1133,6 +1133,7 @@ Discovered Patterns:    Indefinite if validated
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.3 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed {table}_key → {table}_id for GENERATED ALWAYS AS IDENTITY columns; swapped session_key (INTEGER surrogate) ↔ session_id (VARCHAR natural key) in agent_session | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.2 | 2026-03-17 | Updated naming convention: {entity}_id = Surrogate Key, {entity}_key = Natural Business Key; updated all party_key/entity_key references in "do not store" examples to party_id, aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2025-02-27 | Changed is_active & is_validated to be consistent and align with boolean standards from Domain | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.0 | 2025-02-09 | Initial Memory Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |

@@ -1,5 +1,5 @@
 # Observability Module Design Standard
-## AI-Native Data Product Architecture - Version 1.0
+## AI-Native Data Product Architecture - Version 1.2
 
 ---
 
@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Status** | STANDARD |
-| **Last Updated** | 2025-02-27 |
+| **Last Updated** | 2026-03-18 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Observability Module (Monitoring & Feedback) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -71,7 +71,7 @@ Observability stores **events and metrics**, not business data:
 
 ```sql
 CREATE TABLE Observability.change_event (
-    change_event_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    change_event_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
     -- What changed (TABLE LEVEL - not individual records)
     database_name VARCHAR(100),
@@ -91,18 +91,18 @@ CREATE TABLE Observability.change_event (
     columns_changed VARCHAR(1000),  -- Comma-separated list of columns modified
     
     -- Batch/job tracking
-    batch_id VARCHAR(100),
+    batch_key VARCHAR(100),
     job_name VARCHAR(200),
     
     -- Metadata
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (change_event_key);
+PRIMARY INDEX (change_event_id);
 
 COMMENT ON TABLE Observability.change_event IS 
 'Table-level change event tracking - records aggregated changes for audit trail, NOT individual record details';
 
-COMMENT ON COLUMN Observability.change_event.change_event_key IS 
+COMMENT ON COLUMN Observability.change_event.change_event_id IS 
 'Surrogate key for change event record';
 
 COMMENT ON COLUMN Observability.change_event.database_name IS 
@@ -132,8 +132,8 @@ COMMENT ON COLUMN Observability.change_event.records_affected IS
 COMMENT ON COLUMN Observability.change_event.columns_changed IS 
 'Columns modified - comma-separated list of column names that were updated';
 
-COMMENT ON COLUMN Observability.change_event.batch_id IS 
-'Batch identifier - links related changes in same ETL run or transaction';
+COMMENT ON COLUMN Observability.change_event.batch_key IS 
+'Batch identifier name - links related changes in same ETL run or transaction';
 
 COMMENT ON COLUMN Observability.change_event.job_name IS 
 'Job or process name - identifies the ETL job, API endpoint, or process that made change';
@@ -147,7 +147,7 @@ COMMENT ON COLUMN Observability.change_event.created_at IS
 -- ETL updates 125,000 Party records
 INSERT INTO Observability.change_event (
     database_name, table_name, change_type, change_dts,
-    changed_by, change_source, records_affected, batch_id
+    changed_by, change_source, records_affected, batch_key
 ) VALUES (
     'Domain', 'Party_H', 'UPDATE', CURRENT_TIMESTAMP(6),
     'ETL_NIGHTLY', 'ETL', 125000, 'BATCH-2024-03-15-001'
@@ -166,7 +166,7 @@ INSERT INTO Observability.change_event (
 
 ```sql
 CREATE TABLE Observability.data_quality_metric (
-    quality_metric_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    quality_metric_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     database_name VARCHAR(100),
     table_name VARCHAR(100) NOT NULL,
     column_name VARCHAR(100),
@@ -179,12 +179,12 @@ CREATE TABLE Observability.data_quality_metric (
     sample_size INTEGER,
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (quality_metric_key);
+PRIMARY INDEX (quality_metric_id);
 
 COMMENT ON TABLE Observability.data_quality_metric IS 
 'Data quality metrics by table and column - tracks quality trends over time for monitoring and alerting';
 
-COMMENT ON COLUMN Observability.data_quality_metric.quality_metric_key IS 
+COMMENT ON COLUMN Observability.data_quality_metric.quality_metric_id IS 
 'Surrogate key for quality metric record';
 
 COMMENT ON COLUMN Observability.data_quality_metric.database_name IS 
@@ -225,7 +225,7 @@ COMMENT ON COLUMN Observability.data_quality_metric.created_at IS
 
 ```sql
 CREATE TABLE Observability.data_lineage (
-    lineage_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    lineage_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     source_database VARCHAR(100),
     source_table VARCHAR(100),
     source_system VARCHAR(100),
@@ -243,12 +243,12 @@ CREATE TABLE Observability.data_lineage (
     run_status VARCHAR(20),
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (lineage_key);
+PRIMARY INDEX (lineage_id);
 
 COMMENT ON TABLE Observability.data_lineage IS 
 'Data lineage tracking - records data provenance and transformations aligned with OpenLineage standard';
 
-COMMENT ON COLUMN Observability.data_lineage.lineage_key IS 
+COMMENT ON COLUMN Observability.data_lineage.lineage_id IS 
 'Surrogate key for lineage record';
 
 COMMENT ON COLUMN Observability.data_lineage.source_database IS 
@@ -304,8 +304,8 @@ COMMENT ON COLUMN Observability.data_lineage.created_at IS
 
 ```sql
 CREATE TABLE Observability.model_performance (
-    performance_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    model_id VARCHAR(100) NOT NULL,
+    performance_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    model_key VARCHAR(100) NOT NULL,
     model_version VARCHAR(20) NOT NULL,
     metric_name VARCHAR(100) NOT NULL,
     metric_value DECIMAL(10,6),
@@ -314,16 +314,16 @@ CREATE TABLE Observability.model_performance (
     is_sla_met BYTEINT NOT NULL DEFAULT 0,
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (performance_key);
+PRIMARY INDEX (performance_id);
 
 COMMENT ON TABLE Observability.model_performance IS 
 'Model performance metrics over time - tracks ML model accuracy, latency, and drift for monitoring';
 
-COMMENT ON COLUMN Observability.model_performance.performance_key IS 
+COMMENT ON COLUMN Observability.model_performance.performance_id IS 
 'Surrogate key for performance metric record';
 
-COMMENT ON COLUMN Observability.model_performance.model_id IS 
-'Model identifier - unique name of ML model being monitored';
+COMMENT ON COLUMN Observability.model_performance.model_key IS 
+'Model identifier name - unique name of ML model being monitored';
 
 COMMENT ON COLUMN Observability.model_performance.model_version IS 
 'Model version - tracks which version of model is being evaluated';
@@ -351,9 +351,9 @@ COMMENT ON COLUMN Observability.model_performance.created_at IS
 
 ```sql
 CREATE TABLE Observability.agent_outcome (
-    outcome_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    agent_id VARCHAR(100) NOT NULL,
-    session_id VARCHAR(100),
+    outcome_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    agent_key VARCHAR(100) NOT NULL,
+    session_key VARCHAR(100),
     action_type VARCHAR(50) NOT NULL,
     action_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     tables_accessed VARCHAR(1000),
@@ -363,19 +363,19 @@ CREATE TABLE Observability.agent_outcome (
     records_processed INTEGER,
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (outcome_key);
+PRIMARY INDEX (outcome_id);
 
 COMMENT ON TABLE Observability.agent_outcome IS 
 'Agent action outcomes and user feedback - enables closed-loop learning by tracking what worked';
 
-COMMENT ON COLUMN Observability.agent_outcome.outcome_key IS 
+COMMENT ON COLUMN Observability.agent_outcome.outcome_id IS 
 'Surrogate key for outcome record';
 
-COMMENT ON COLUMN Observability.agent_outcome.agent_id IS 
-'Agent identifier - which agent performed this action';
+COMMENT ON COLUMN Observability.agent_outcome.agent_key IS 
+'Agent identifier name - which agent performed this action';
 
-COMMENT ON COLUMN Observability.agent_outcome.session_id IS 
-'Session identifier - links outcome to agent session context';
+COMMENT ON COLUMN Observability.agent_outcome.session_key IS 
+'Session identifier name - links outcome to agent session context';
 
 COMMENT ON COLUMN Observability.agent_outcome.action_type IS 
 'Action type - QUERY, RECOMMENDATION, DECISION, PREDICTION - classifies agent action';
@@ -430,7 +430,7 @@ Use standard metric names for consistency.
 -- ETL updates 250,000 Party records
 INSERT INTO Observability.change_event (
     database_name, table_name, change_type, change_dts,
-    changed_by, change_source, records_affected, batch_id
+    changed_by, change_source, records_affected, batch_key
 ) VALUES (
     'Domain', 'Party_H', 'UPDATE', CURRENT_TIMESTAMP(6),
     'ETL_DAILY', 'ETL', 250000, 'BATCH-2024-03-15'
@@ -442,7 +442,7 @@ SELECT
     change_dts,
     changed_by,
     records_affected,
-    batch_id
+    batch_key
 FROM Observability.change_event
 WHERE table_name = 'Party_H'
   AND change_dts >= CURRENT_DATE - 30
@@ -561,6 +561,7 @@ OpenTelemetry:       Observability
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
 | 1.0 | 2025-02-13 | Initial draft of Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.2 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed {table}_key → {table}_id for all GENERATED ALWAYS AS IDENTITY columns | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2025-02-27 | changed meets_threshold & meets_sla to is_threshold_met & is_sla_met to be consistent with booleans accross modules | Nathan Green, Worldwide Data Architecture Team, Teradata |
 
 ---
