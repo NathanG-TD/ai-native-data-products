@@ -1,5 +1,5 @@
 # Memory Module Design Standard
-## AI-Native Data Product Architecture - Version 1.5
+## AI-Native Data Product Architecture - Version 1.6
 
 ---
 
@@ -7,7 +7,7 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.5 |
+| **Version** | 1.6 |
 | **Status** | STANDARD |
 | **Last Updated** | 2026-03-20 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
@@ -920,7 +920,7 @@ FROM TD_VECTORDISTANCE (
     ON current_session_embedding AS TargetTable PARTITION BY ANY
     ON Search.entity_embedding AS ReferenceTable DIMENSION
     WHERE ReferenceTable.entity_type = 'SESSION'
-      AND ReferenceTable.is_current = 'Y'
+      AND ReferenceTable.is_current = 1
     USING
         TargetFeatureColumns('embedding_vector')
         RefIDColumn('entity_id')
@@ -1650,6 +1650,7 @@ Discovered Patterns:    Indefinite if validated
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.6 | 2026-03-20 | Fixed = 'Y' filter value in Search integration example (Section 6.3) to = 1. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.5 | 2026-03-20 | Revised Documentation Sub-Module (Section 8) to align with data product self-containment principle. Removed shared dp_documentation cross-product database pattern. Documentation tables now reside in the same {ProductName}_Memory database as runtime memory tables, framed as "design memory" alongside "runtime memory". Removed data_product column from all 6 table DDL definitions. Removed cross-product (data_product = 'ALL') pattern. Simplified temporal queries. Collapsed 3 workflows to 2 (Bootstrap removed — documentation tables created as part of Memory DDL). Updated Section 6.5 example INSERT to use Memory.Design_Decision. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.4 | 2026-03-20 | Added Documentation Sub-Module (Section 8) — merged standalone documentation skill into Memory standard. Covers shared dp_documentation database, 6 table definitions (Module_Registry, Design_Decision, Business_Glossary, Query_Cookbook, Implementation_Note, Change_Log), 3 workflows (Bootstrap, Capture, Generate), temporal query patterns, standard views, and cross-module capture protocol. Updated Sections 1.1, 1.2, 2.1, 6, 7 to reference documentation capabilities. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.3 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed {table}_key → {table}_id for GENERATED ALWAYS AS IDENTITY columns; swapped session_key (INTEGER surrogate) ↔ session_id (VARCHAR natural key) in agent_session | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |

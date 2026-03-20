@@ -1,6 +1,6 @@
 # AI-Native Data Product - Master Design Standard
 
-**Version:** 1.6  
+**Version:** 1.7  
 **Date:** March 20, 2026  
 **Document Type:** Design Standard / Reusable Template  
 **Purpose:** Define the architectural blueprint and design standards for modular, AI-native data products optimized for agentic consumption
@@ -438,7 +438,7 @@ Agent Initialization
 -- Step 2: Discover modules
 SELECT module_name, database_name, primary_tables
 FROM Customer360_Semantic.data_product_map
-WHERE is_active = 'Y';
+WHERE is_active = 1;
 
 -- Result: 
 -- Domain → Customer360_Domain (Party_H, Product_H, Transaction_H)
@@ -448,7 +448,7 @@ WHERE is_active = 'Y';
 -- Step 3: Discover Domain entities
 SELECT entity_name, table_name, view_name, natural_key_column
 FROM Customer360_Semantic.entity_metadata
-WHERE module_name = 'Domain' AND is_active = 'Y';
+WHERE module_name = 'Domain' AND is_active = 1;
 
 -- Result:
 -- Party → Party_H (view: Party_Current, key: party_key)
@@ -467,7 +467,7 @@ SELECT p.party_key, p.legal_name, cf.credit_score_normalized
 FROM Customer360_Domain.Party_H p
 INNER JOIN Customer360_Prediction.customer_features cf
     ON cf.party_id = p.party_id
-WHERE p.is_current = 1 AND cf.is_current = 'Y';
+WHERE p.is_current = 1 AND cf.is_current = 1;
 ```
 
 ### Why Semantic as the Map
@@ -736,6 +736,7 @@ Observability ─────────→ Memory (feedback loop)
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.7 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Fixed = 'Y' filter values in agent discovery example queries (Section: Agent Discovery via Semantic Map) to = 1 to align with platform boolean standard. |
 | 1.6 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Revised to align with data product self-containment principle. Removed shared dp_documentation database pattern. Documentation tables now co-located in {ProductName}_Memory database as design memory alongside runtime memory. Removed Pre-Phase bootstrap from implementation order. Updated Memory module definition, Physical Naming Conventions, and Glossary (revised Documentation Sub-Module entry, removed dp_documentation entry). |
 | 1.5 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Added Glossary entry for Module. |
 | 1.4 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Merged Documentation as sub-module of Memory. Updated Documentation Hierarchy tree, Architecture Overview ASCII, Memory module definition (Scope and Integration Points), Implementation Order (added Pre-Phase dp_documentation bootstrap), Physical Naming Conventions (added dp_documentation shared database), Glossary (added Architecture Decision Record, Documentation Sub-Module, dp_documentation). |

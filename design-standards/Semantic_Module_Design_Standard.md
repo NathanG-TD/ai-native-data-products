@@ -1,5 +1,5 @@
 # Semantic Module Design Standard
-## AI-Native Data Product Architecture - Version 2.4 (Tested & Validated)
+## AI-Native Data Product Architecture - Version 2.5 (Tested & Validated)
 
 ---
 
@@ -7,7 +7,7 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 2.4 |
+| **Version** | 2.5 |
 | **Status** | STANDARD - Tested on Teradata |
 | **Last Updated** | 2026-03-20 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
@@ -74,7 +74,7 @@ CREATE TABLE Semantic.entity_metadata (
     current_flag_column VARCHAR(100),
     deleted_flag_column VARCHAR(100),
     industry_standard VARCHAR(50),
-    is_active CHAR(1) DEFAULT 'Y',
+    is_active BYTEINT NOT NULL DEFAULT 1,
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
@@ -141,13 +141,13 @@ CREATE TABLE Semantic.column_metadata (
     table_name VARCHAR(100) NOT NULL,
     column_name VARCHAR(100) NOT NULL,
     business_description VARCHAR(1000),
-    is_pii CHAR(1) DEFAULT 'N',
-    is_sensitive CHAR(1) DEFAULT 'N',
+    is_pii BYTEINT NOT NULL DEFAULT 0,
+    is_sensitive BYTEINT NOT NULL DEFAULT 0,
     data_classification VARCHAR(50),
-    is_required CHAR(1),
+    is_required BYTEINT NOT NULL DEFAULT 1,
     data_type VARCHAR(100),
     allowed_values_json JSON,
-    is_active CHAR(1) DEFAULT 'Y',
+    is_active BYTEINT NOT NULL DEFAULT 1,
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
@@ -210,7 +210,7 @@ CREATE TABLE Semantic.naming_standard (
     usage_guidance VARCHAR(1000),
     applies_to VARCHAR(50),
     examples VARCHAR(1000),
-    is_active CHAR(1) DEFAULT 'Y',
+    is_active BYTEINT NOT NULL DEFAULT 1,
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
 PRIMARY INDEX (naming_standard_id);
@@ -274,7 +274,7 @@ CREATE TABLE Semantic.data_product_map (
     deployed_dts TIMESTAMP(6) WITH TIME ZONE,
     
     -- Status
-    is_active CHAR(1) DEFAULT 'Y',
+    is_active BYTEINT NOT NULL DEFAULT 1,
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
@@ -351,7 +351,7 @@ INSERT INTO Semantic.data_product_map VALUES
 -- Agent discovers all deployed modules
 SELECT module_name, database_name, primary_tables, deployment_status
 FROM Semantic.data_product_map
-WHERE is_active = 'Y'
+WHERE is_active = 1
 ORDER BY module_name;
 ```
 
@@ -373,8 +373,8 @@ CREATE TABLE Semantic.table_relationship (
     relationship_type VARCHAR(50) NOT NULL,
     cardinality VARCHAR(20),
     relationship_meaning VARCHAR(500),
-    is_mandatory CHAR(1) DEFAULT 'N',
-    is_active CHAR(1) DEFAULT 'Y',
+    is_mandatory BYTEINT NOT NULL DEFAULT 0,
+    is_active BYTEINT NOT NULL DEFAULT 1,
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
@@ -459,7 +459,7 @@ WITH RECURSIVE relationship_paths (
         1 AS hop_count,
         relationship_description AS path_description
     FROM Semantic.table_relationship
-    WHERE is_active = 'Y'
+    WHERE is_active = 1
     
     UNION ALL
     
@@ -474,7 +474,7 @@ WITH RECURSIVE relationship_paths (
         1 AS hop_count,
         'REVERSE: ' || relationship_description AS path_description
     FROM Semantic.table_relationship
-    WHERE is_active = 'Y'
+    WHERE is_active = 1
     
     UNION ALL
     
@@ -492,7 +492,7 @@ WITH RECURSIVE relationship_paths (
     FROM relationship_paths rp
     INNER JOIN Semantic.table_relationship tr 
         ON tr.source_table = rp.target_table
-       AND tr.is_active = 'Y'
+       AND tr.is_active = 1
     WHERE rp.hop_count < 5
       AND rp.path_tables NOT LIKE '%' || tr.target_table || '%'
       
@@ -512,7 +512,7 @@ WITH RECURSIVE relationship_paths (
     FROM relationship_paths rp
     INNER JOIN Semantic.table_relationship tr 
         ON tr.target_table = rp.target_table
-       AND tr.is_active = 'Y'
+       AND tr.is_active = 1
     WHERE rp.hop_count < 5
       AND rp.path_tables NOT LIKE '%' || tr.source_table || '%'
 )
@@ -550,7 +550,7 @@ QUALIFY ROW_NUMBER() OVER (ORDER BY hop_count) = 1;
 -- What tables exist?
 SELECT entity_name, module_name, table_name
 FROM Semantic.entity_metadata
-WHERE is_active = 'Y';
+WHERE is_active = 1;
 
 -- How do I join A to B?
 SELECT hop_count, path_joins
@@ -641,6 +641,7 @@ Every Semantic module must populate the Memory database documentation tables as 
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 2.5 | 2026-03-20 | Fixed boolean column definitions and filter values throughout: converted all CHAR(1) DEFAULT 'Y'/'N' columns (is_active, is_pii, is_sensitive, is_required, is_mandatory) to BYTEINT NOT NULL DEFAULT 1/0; converted all = 'Y' / = 'N' filter values to = 1 / = 0 to align with platform boolean standard. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 2.4 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
 | 2.3 | 2026-03-20 | Added Section 8.4 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, design checklist additions, and reference to Memory Module Section 8 protocol. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 2.2 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed {table}_key → {table}_id for all GENERATED ALWAYS AS IDENTITY columns | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |

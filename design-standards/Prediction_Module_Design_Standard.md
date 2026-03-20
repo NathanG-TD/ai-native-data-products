@@ -1,5 +1,5 @@
 # Prediction Module Design Standard
-## AI-Native Data Product Architecture - Version 1.5
+## AI-Native Data Product Architecture - Version 1.6
 
 ---
 
@@ -7,7 +7,7 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.5 |
+| **Version** | 1.6 |
 | **Status** | STANDARD |
 | **Last Updated** | 2026-03-20 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
@@ -611,7 +611,7 @@ CREATE TABLE Observability.feature_quality (
     null_percentage DECIMAL(5,4),
     distribution_shift_score DECIMAL(5,4),
     quality_score DECIMAL(3,2),
-    is_active CHAR(1) DEFAULT 'Y'
+    is_active BYTEINT NOT NULL DEFAULT 1
 )
 PRIMARY INDEX (quality_id);
 
@@ -635,7 +635,7 @@ WHERE table_name IN (
     FROM Semantic.entity_metadata 
     WHERE module_name = 'Prediction'
 )
-AND is_active = 'Y';
+AND is_active = 1;
 ```
 
 #### Get current feature values for an entity
@@ -910,6 +910,7 @@ Prediction → Observability: Feature drift, quality monitoring
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.6 | 2026-03-20 | Fixed boolean column definition in model_prediction table: is_active CHAR(1) DEFAULT 'Y' → BYTEINT NOT NULL DEFAULT 1; fixed = 'Y' filter value to = 1. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.5 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
 | 1.4 | 2026-03-20 | Added Section 7.4 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, and reference to Memory Module Section 8 protocol. Updated Section 7.3 checklist to include documentation capture steps. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.3 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed {table}_key → {table}_id for all GENERATED ALWAYS AS IDENTITY columns | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
