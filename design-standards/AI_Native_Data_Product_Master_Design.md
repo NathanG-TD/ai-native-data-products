@@ -1,6 +1,6 @@
 # AI-Native Data Product - Master Design Standard
 
-**Version:** 1.3  
+**Version:** 1.4  
 **Date:** March 20, 2026  
 **Document Type:** Design Standard / Reusable Template  
 **Purpose:** Define the architectural blueprint and design standards for modular, AI-native data products optimized for agentic consumption
@@ -32,6 +32,14 @@ LAYER 1: DESIGN STANDARDS (This Document + Module Standards)
     ├── Observability Module Design Standard
     ├── Semantic Module Design Standard
     └── Memory Module Design Standard
+        └── Section 8: Documentation Sub-Module (dp_documentation)
+            Covers: Module_Registry, Design_Decision, Business_Glossary,
+            Query_Cookbook, Implementation_Note, Change_Log
+
+NOTE: Documentation is not a standalone module. The dp_documentation
+shared database and all documentation tables are defined in the Memory
+Module Design Standard (Section 8) and deployed once per environment
+before any data product modules are created.
 
 LAYER 2: ACTUAL DATA PRODUCT DESIGNS (Apply Standards)
 ├── Customer 360 Data Product (uses standards above)
@@ -115,8 +123,8 @@ Create data products that agents can **discover, understand, and consume autonom
 │                                                                   │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
 │  │Observability │  │   Semantic   │  │    Memory    │          │
-│  │  (Feedback & │  │  (Knowledge  │  │  (Long-term  │          │
-│  │    Events)   │  │   & Meaning) │  │Collaboration)│          │
+│  │  (Feedback & │  │  (Knowledge  │  │ (Agent State,│          │
+│  │    Events)   │  │   & Meaning) │  │Learning & Doc│          │
 │  └──────────────┘  └──────────────┘  └──────────────┘          │
 │                                                                   │
 └─────────────────────────────────────────────────────────────────┘
@@ -258,8 +266,8 @@ Create data products that agents can **discover, understand, and consume autonom
 
 ---
 
-### 6. Memory (Long-term Agent Collaboration)
-**Purpose:** Enable agents to learn, remember, and collaborate across sessions and users
+### 6. Memory (Agent State, Learning & Documentation)
+**Purpose:** Enable agents to learn, remember, and collaborate across sessions and users. Also serves as the host for the Documentation Sub-Module — a shared knowledge repository capturing design decisions, business glossary terms, query patterns, and change history across all data products.
 
 **Scope:**
 - Conversation history and decision logs
@@ -269,12 +277,20 @@ Create data products that agents can **discover, understand, and consume autonom
 - Cross-agent shared learnings (patterns discovered, strategies tested)
 - Situational context (market conditions, operational state)
 - Long-term patterns and insights
+- **Documentation Sub-Module** (`dp_documentation` shared database):
+  - `Module_Registry` — version registry for all modules across all data products
+  - `Design_Decision` — Architecture Decision Records with version chain
+  - `Business_Glossary` — domain term definitions per data product
+  - `Query_Cookbook` — proven, reusable query patterns
+  - `Implementation_Note` — operational knowledge and known issues
+  - `Change_Log` — versioned change history per module
 
 **Key Characteristics:**
 - Persistent across sessions
 - Shared across agent instances
 - Privacy-aware and scoped appropriately
 - Enables meta-learning (learning how to learn)
+- `dp_documentation` is deployed **once per environment** before any data product — it is not per data product
 
 **Integration Points:**
 - Learns from Observability module outcomes
@@ -282,6 +298,7 @@ Create data products that agents can **discover, understand, and consume autonom
 - Applies Semantic rules to reason about past decisions
 - Informs Feature Store (what features were useful)
 - References Domain data for entity continuity
+- Receives documentation captures from every other module (Domain, Semantic, Search, Prediction, Observability) during their design workflow
 
 ---
 
@@ -484,6 +501,22 @@ WHERE p.is_current = 1 AND cf.is_current = 'Y';
 
 **Critical Consideration**: Multiple AI-Native Data Products can be deployed on a single Teradata platform. Database names must be unique across the platform.
 
+#### Special Case: Shared Documentation Database
+
+Before any per-product databases are created, a single shared documentation database is bootstrapped:
+
+```
+dp_documentation  (shared across ALL data products, deployed ONCE per environment)
+  ├── Module_Registry       -- version registry for all modules, all products
+  ├── Design_Decision       -- ADRs tagged by data_product
+  ├── Business_Glossary     -- term definitions tagged by data_product
+  ├── Query_Cookbook        -- query patterns tagged by data_product
+  ├── Implementation_Note   -- operational notes tagged by data_product
+  └── Change_Log            -- change history tagged by data_product
+```
+
+Every module deployment writes documentation records into `dp_documentation` using `data_product = '{product_name}'`. Cross-product standards use `data_product = 'ALL'`. See Memory Module Design Standard, Section 8 for the full protocol.
+
 #### Approach 1: Separate Databases per Module (RECOMMENDED)
 
 **Pattern**: `{DataProductName}_{ModuleName}`
@@ -641,6 +674,12 @@ CREATE TABLE Customer360.P_customer_features (
 
 ### Recommended Implementation Order
 
+**Pre-Phase: Documentation Bootstrap (Once per Environment)**
+0. Bootstrap `dp_documentation` database (Memory Module Design Standard, Section 8.3, Workflow 1)
+   - Deployed **once per Teradata environment** — not per data product
+   - All subsequent module deployments write their design decisions into this shared database
+   - Must exist before any Phase 1 work begins
+
 **Phase 1: Foundation**
 1. Domain/Subject Data (required first - everything else builds on this)
 2. Semantic (enables self-description and discoverability)
@@ -671,13 +710,19 @@ Observability ─────────→ Memory (feedback loop)
 
 **Agent**: An autonomous software entity that can perceive, reason, and act - consuming data products to achieve goals.
 
+**Architecture Decision Record (ADR)**: A structured record capturing a significant design decision, including context, alternatives considered, rationale, and consequences. Stored in `dp_documentation.Design_Decision`.
+
 **Attribute**: A column within an entity (table). For example, party_key is an attribute of the Party entity.
 
 **Co-location**: Teradata's ability to store related data on the same AMPs for efficient joins without data movement.
 
 **Data Product**: A self-contained, well-defined data asset with clear ownership, interfaces, and SLAs - treated as a product rather than a byproduct.
 
+**Documentation Sub-Module**: A sub-module of the Memory Module that provides a shared `dp_documentation` database for capturing design decisions, business glossary terms, query patterns, operational notes, and change history across all data products. Deployed once per environment before any data product modules. Defined in Memory Module Design Standard, Section 8.
+
 **Domain/Subject Data**: The core business entities and facts - the "source of truth" layer.
+
+**dp_documentation**: The shared Teradata database that hosts all Documentation Sub-Module tables. Named without a data product prefix because it serves all data products in the environment. Every module writes records tagged with their `data_product` name; cross-product standards use `data_product = 'ALL'`.
 
 **Embedding**: A dense vector representation of data (text, images, entities) in a high-dimensional space where semantic similarity maps to geometric proximity.
 
@@ -709,10 +754,11 @@ Observability ─────────→ Memory (feedback loop)
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
-| 1.0 | 2025-11-07 | Nathan Green, Worldwide Data Architecture Team, Teradata | Initial master design standard with standards-based approach |
-| 1.1 | 2026-02-05 | Nathan Green, Worldwide Data Architecture Team, Teradata | Updated to clarify scope of modules |
+| 1.4 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Merged Documentation as sub-module of Memory. Updated Documentation Hierarchy tree, Architecture Overview ASCII, Memory module definition (Scope and Integration Points), Implementation Order (added Pre-Phase dp_documentation bootstrap), Physical Naming Conventions (added dp_documentation shared database), Glossary (added Architecture Decision Record, Documentation Sub-Module, dp_documentation). |
+| 1.3 | 2026-03-18 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata | Updated to remain consistent with module design docs, the key/id swap |
 | 1.2 | 2026-02-16 | Nathan Green, Worldwide Data Architecture Team, Teradata | Updated to remain consistent with module design docs, added agent discovery section |
-| 1.3 | 2026-03-120 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata | Updated to remain consistent with module design docs, the key/id swap |
+| 1.1 | 2026-02-05 | Nathan Green, Worldwide Data Architecture Team, Teradata | Updated to clarify scope of modules |
+| 1.0 | 2025-11-07 | Nathan Green, Worldwide Data Architecture Team, Teradata | Initial master design standard with standards-based approach |
 ---
 
 *This is a living standard. Module Design Standards will extend these principles, and actual data product implementations will apply them. Standards evolve based on experience and feedback.*
