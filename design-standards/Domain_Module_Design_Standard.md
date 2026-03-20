@@ -1,5 +1,5 @@
 # Domain Module Design Standard
-## AI-Native Data Product Architecture - Version 2.2
+## AI-Native Data Product Architecture - Version 2.3
 
 ---
 
@@ -7,7 +7,7 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 2.2 |
+| **Version** | 2.3 |
 | **Status** | STANDARD |
 | **Last Updated** | 2026-03-20 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
@@ -844,7 +844,6 @@ SELECT * FROM Product_Current WHERE product_key = 'SKU-456';
 - [ ] Physical design choices documented and justified
 - [ ] Integrates cleanly with other modules
 - [ ] Agent discoverability requirements met
-- [ ] `dp_documentation` bootstrap confirmed (Memory Module Section 8.3, Workflow 1)
 - [ ] Module_Registry INSERT generated for this module
 - [ ] Min. 3 Design_Decision INSERTs generated
 - [ ] Change_Log initial release entry generated
@@ -853,17 +852,17 @@ SELECT * FROM Product_Current WHERE product_key = 'SKU-456';
 
 ### 8.5 Documentation Capture Requirements
 
-Every Domain module must populate `dp_documentation` as part of its design workflow. The shared `dp_documentation` database and full protocol are defined in the **Memory Module Design Standard, Section 8**.
+Every Domain module must populate the Memory database documentation tables as part of its design workflow. The table definitions, workflows, and full protocol are defined in the **Memory Module Design Standard, Section 8**.
 
 **Minimum requirements:**
 
 | Record Type | Table | Minimum | Notes |
 |-------------|-------|---------|-------|
-| Module_Registry | `dp_documentation.Module_Registry` | 1 | Register this module with data_product and version |
-| Design_Decision | `dp_documentation.Design_Decision` | 3 | Key architectural and schema choices |
-| Change_Log | `dp_documentation.Change_Log` | 1 | Initial release entry (version 1.0.0) |
-| Business_Glossary | `dp_documentation.Business_Glossary` | 3 | Domain terms and entity definitions introduced |
-| Query_Cookbook | `dp_documentation.Query_Cookbook` | 1 | Key query patterns (e.g., current entity lookup, point-in-time reconstruction) |
+| Module_Registry | `Memory.Module_Registry` | 1 | Register this module with data_product and version |
+| Design_Decision | `Memory.Design_Decision` | 3 | Key architectural and schema choices |
+| Change_Log | `Memory.Change_Log` | 1 | Initial release entry (version 1.0.0) |
+| Business_Glossary | `Memory.Business_Glossary` | 3 | Domain terms and entity definitions introduced |
+| Query_Cookbook | `Memory.Query_Cookbook` | 1 | Key query patterns (e.g., current entity lookup, point-in-time reconstruction) |
 
 **Typical decision categories for Domain modules:**
 
@@ -971,6 +970,7 @@ party_id BIGINT, product_id BIGINT
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 2.3 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
 | 2.2 | 2026-03-20 | Added Section 8.5 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, and reference to Memory Module Section 8 protocol. Updated Section 8.4 checklist to include documentation capture steps. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 2.1 | 2026-03-16 | Swapped {entity}_id and {entity}_key roles: Since {entity}_id is already defined in iDM as the integration key, designating {entity}_key as the natural business key from the source system resolves conflicts regarding the inheritance of the iDM primary key. | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 2.0 | 2025-02-09 | Refactored to focus on structure, not implementation | Nathan Green, Worldwide Data Architecture Team, Teradata |
