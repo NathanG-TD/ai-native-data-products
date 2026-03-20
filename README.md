@@ -1,173 +1,152 @@
 # AI-Native Data Product Design Standards
 
-A comprehensive, integrated architectural framework for building AI-Native Data Products on Teradata that enable autonomous agent discovery and operation.
+A comprehensive architectural framework for building AI-Native Data Products
+on Teradata — modular, self-describing, and optimised for autonomous agent
+discovery and operation.
 
 ---
 
 ## Overview
 
-This repository contains a complete set of design standards for building data products optimized for AI agent consumption. Unlike fragmented approaches that treat vector stores, feature stores, and knowledge graphs as independent silos, these standards provide a unified framework where six specialized modules work together as an integrated system.
+This repository contains the master set of design standards for AI-Native
+Data Products. The standards define a six-module architecture where each
+module has a distinct responsibility, its own data model, and integrates
+with the others through consistent patterns.
 
-The Semantic module serves as a universal discovery map, enabling agents to autonomously navigate the complete data product structure through queryable metadata—eliminating the need for pre-programmed system knowledge or manual integration of disconnected components.
-
----
-
-## What's Included
-
-### Core Design Standards (6 Modules)
-
-- **Domain Module** - Core business entities with bi-temporal tracking (single source of truth)
-- **Semantic Module** - Comprehensive metadata layer enabling agent discovery of all modules
-- **Prediction Module** - Feature engineering and ML prediction storage with point-in-time correctness
-- **Search Module** - Vector embeddings for semantic similarity search using Teradata native VECTOR
-- **Memory Module** - Agent learning, session state, and discovered patterns
-- **Observability Module** - Event tracking, data quality monitoring, and lineage (OpenLineage aligned)
-
-### Supporting Documentation
-
-- **Master Design Standard** - Complete architectural blueprint with physical naming conventions
-- **Advocated Data Management Standards** - Implementation guidance and best practices
-- **Agent Bootstrap Prompt Fragment** - Reusable agent initialization protocol
-
-### Skills
-
-- **Teradata JSON Skill** - Working with JSON data in Teradata
-- **Teradata Recursive SQL Skill** - Graph traversal and multi-hop queries
-- **AI-Native Module Design Skills** - Domain, Semantic, Prediction, Search, Memory, Observability
+**Design documents are the single source of truth.** The unified Claude
+skill (generated from these documents via the conversion prompt) is a
+compressed, agent-optimised rendering of the standards — never edited
+directly.
 
 ---
 
-## Key Features
+## Repository Structure
 
-### Integrated Architecture
-All six modules designed to work together with standard integration patterns, zero data duplication, and consistent temporal tracking across modules.
+```
+ai-native-data-products/
+├── design-standards/        ← master source of truth
+│   ├── AI_Native_Data_Product_Master_Design.md
+│   ├── Advocated_Data_Management_Standards.md
+│   ├── Domain_Module_Design_Standard.md
+│   ├── Semantic_Module_Design_Standard.md
+│   ├── Search_Module_Design_Standard.md
+│   ├── Prediction_Module_Design_Standard.md
+│   ├── Observability_Module_Design_Standard.md
+│   └── Memory_Module_Design_Standard.md
+│
+└── prompts/                 ← how to use the standards
+    ├── Skill_Conversion_Prompt.md
+    ├── Design_Data_Product_Starter.md
+    └── Access_Data_Product_Starter.md
+```
 
-### Agent Discovery Protocol
-Three-tier discovery hierarchy enables agents to autonomously discover module locations, table structures, and relationships from a single entry point.
+---
 
-### Multi-Hop Relationship Discovery
-Recursive SQL patterns find join paths between any tables across modules.
+## The Six Modules
 
-### Platform-Native Design
-Leverages Teradata capabilities: native VECTOR datatype, massively parallel processing, co-located joins, and JSON handling.
+| Module | Purpose | Database pattern |
+|--------|---------|-----------------|
+| **Domain** | Core business entities — source of truth | `{Name}_Domain` |
+| **Semantic** | Metadata layer enabling agent discovery | `{Name}_Semantic` |
+| **Search** | Vector embeddings and similarity search | `{Name}_Search` |
+| **Prediction** | Feature store and ML prediction storage | `{Name}_Prediction` |
+| **Observability** | Event tracking, quality monitoring, lineage | `{Name}_Observability` |
+| **Memory** | Agent state, learning, and design memory | `{Name}_Memory` |
 
-### Open Standards Alignment
-Integrates with OpenLineage (data lineage), ODCS (data contracts), and Feast patterns (feature stores).
+Each module is independently deployable and composable. A data product can
+implement any combination.
 
-### Comprehensive Metadata
-Over 410 COMMENT statements demonstrate self-describing design—every table and column documented for both human and agent understanding.
+### Memory Module — Two Kinds of Memory
+
+The Memory module hosts both:
+- **Runtime memory** — agent sessions, interactions, learned strategies,
+  user preferences, discovered patterns
+- **Design memory** (Documentation Sub-Module) — architectural decisions,
+  business glossary, query cookbook, change history
+
+Both are temporal, append-oriented records of history. All documentation
+tables live in `{Name}_Memory` — the data product is fully self-contained
+with no external dependencies.
+
+---
+
+## Deployment Order
+
+| Phase | Modules | Notes |
+|-------|---------|-------|
+| 1 | Domain, Semantic | Always first — foundation and discovery layer |
+| 2 | Search, Prediction | Either order |
+| 3 | Observability, Memory | Memory last — documentation tables created here |
+
+---
+
+## Prompts
+
+### Skill_Conversion_Prompt.md
+Converts all design standard documents into a single unified Claude skill
+(`ai-native-data-product.skill`) with progressive disclosure:
+- `SKILL.md` — always read by orchestrator and sub-agents; architecture,
+  naming conventions, documentation capture protocol, routing instructions
+- `modules/{module}.md` — read on demand; full DDL templates, design
+  decisions, integration patterns, checklists for each module
+
+Run this prompt whenever design standards are updated to regenerate the skill.
+
+### Design_Data_Product_Starter.md
+Starting prompt for designing a new data product. Directs an orchestrator
+agent to load the unified skill and spin up sub-agents for each module.
+
+### Access_Data_Product_Starter.md
+Starting prompt for an agent consuming an existing data product. Guides
+autonomous discovery via the Semantic module.
+
+---
+
+## Key Principles
+
+1. **Design documents are the source of truth** — skills are derived,
+   never edited directly
+2. **Independently deployable modules** — each module is self-contained
+   with its own database and data model
+3. **Self-contained data products** — no cross-product database dependencies
+4. **Zero data duplication** — all modules join back to Domain via foreign
+   keys; Teradata co-location makes this efficient
+5. **Agent-native design** — queryable metadata, standard patterns, and
+   multi-hop relationship discovery enable autonomous operation
+6. **Design memory** — every module records its architectural decisions into
+   the Memory module's documentation tables during the design process
 
 ---
 
 ## Getting Started
 
-### 1. Understand the Architecture
+### Designing a new data product
 
-Review **AI_Native_Data_Product_Master_Design.md** for the architectural blueprint, including:
-- Six module descriptions
-- Integration patterns
-- Physical naming conventions
-- Agent discovery system
+1. Review `AI_Native_Data_Product_Master_Design.md` for architecture and
+   naming conventions
+2. Generate the unified skill using `Skill_Conversion_Prompt.md` (attach
+   all design standards; run once per framework update)
+3. Use `Design_Data_Product_Starter.md` to orchestrate the design
 
-### 2. Implement Modules Incrementally
+### Updating the design standards
 
-**Recommended deployment order**:
-1. **Domain** - Foundation (business entities)
-2. **Semantic** - Discovery layer (metadata and relationships)
-3. **Prediction/Search** - Enhancement layers (features and vectors)
-4. **Observability** - Monitoring layer (quality and events)
-5. **Memory** - Learning layer (agent state)
-
-### 3. Review Module-Specific Standards
-
-Each module has a detailed design standard document:
-- Domain_Module_Design_Standard.md
-- Semantic_Module_Design_Standard.md
-- Prediction_Module_Design_Standard.md
-- Search_Module_Design_Standard.md
-- Memory_Module_Design_Standard.md
-- Observability_Module_Design_Standard.md
-
-### 4. Enable Agent Discovery
-
-Use **Agent_Bootstrap_Prompt_Fragment.md** to configure agents for autonomous navigation.
+1. Edit the relevant design standard document(s)
+2. Regenerate the unified skill using `Skill_Conversion_Prompt.md` with
+   the updated document(s) and the current skill attached
 
 ---
 
-## Use Case Examples
+## Design Standard Versions
 
-These design standards can be applied to build:
-
-- **Customer 360** - Unified customer view with behavioral features and embeddings
-- **Fraud Detection** - Real-time transaction analysis with historical patterns
-- **Product Recommendations** - Semantic search with ML-powered suggestions
-- **Risk Analytics** - Predictive risk scoring with audit trails
-- **Knowledge Management** - Document search with relationship discovery
-- **Any AI-driven data product** requiring integrated analytics, ML, and search
-
----
-
-## Design Principles
-
-### 1. Modularity First
-Each module is independently deployable and composable—start with Domain and Semantic, add others as needed.
-
-### 2. Zero Data Duplication
-All modules reference Domain entities via foreign keys. Use views to join modules for complete context—maintain single source of truth.
-
-### 3. Self-Describing
-Comprehensive metadata in Semantic module enables autonomous agent discovery without human guidance.
-
-### 4. Agent-Native Design
-Optimized for machine interpretation through queryable metadata tables, standard patterns, and multi-hop relationship discovery.
-
-### 5. Standards-Driven
-Aligns with open standards (OpenLineage, ODCS, Feast) for interoperability and best practices.
-
-### 6. "Big Questions, Small Answers"
-Agents ask SQL questions, the database processes millions of records; metadata modules store table-level references and aggregate metrics.
-
----
-
-## Technical Highlights
-
-### Tested on Teradata
-- Semantic module multi-hop path discovery validated
-- Memory module VARCHAR table references validated
-- All SQL syntax verified on Teradata Community Edition v20.0
-
-### Comprehensive Metadata
-- 410+ COMMENT statements on tables and columns
-- Every table self-documenting
-- Demonstrates metadata best practices
-
-### Platform Optimization
-- Native VECTOR datatype for embeddings
-- Recursive CTEs for path discovery
-- JSON handling with dot notation
-- Co-located joins for performance
-
----
-
-## Documentation
-
-All design standards include:
-- Table definitions with comprehensive COMMENT statements
-- Integration patterns and examples
-- Query patterns and SQL examples
-- Design checklists and quality criteria
-- Cross-references to other modules
-
-**Total**: ~200 pages of production-ready design documentation
-
----
-
-## Contributing
-
-This is a Teradata-maintained design standard. For questions, suggestions, or feedback:
-
-- Open an issue in this repository
-- Contact: [Your contact information]
+| Document | Version |
+|----------|---------|
+| AI_Native_Data_Product_Master_Design | 1.6 |
+| Domain_Module_Design_Standard | 2.3 |
+| Semantic_Module_Design_Standard | 2.4 |
+| Search_Module_Design_Standard | 1.5 |
+| Prediction_Module_Design_Standard | 1.5 |
+| Observability_Module_Design_Standard | 1.4 |
+| Memory_Module_Design_Standard | 1.5 |
 
 ---
 
@@ -175,18 +154,17 @@ This is a Teradata-maintained design standard. For questions, suggestions, or fe
 
 Copyright © 2025 Teradata Corporation
 
-Licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
-
-See [LICENSE.md](LICENSE.md) for full terms.
+Licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0
+International (CC BY-NC-SA 4.0). See [LICENSE.md](LICENSE.md) for full terms.
 
 ---
 
 ## Acknowledgments
 
-Developed by Teradata's Worldwide Data Architecture Team, Field Technology Organization.
+Developed by Teradata's Worldwide Data Architecture Team,
+Field Technology Organization.
 
 ---
 
-**Version**: 1.0  
-**Last Updated**: February 2026  
-**Status**: Production Ready
+**Last Updated**: March 2026  
+**Status**: Active Development — documentation-memory-merge branch
