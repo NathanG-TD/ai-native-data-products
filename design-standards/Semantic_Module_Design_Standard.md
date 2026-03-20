@@ -1,5 +1,5 @@
 # Semantic Module Design Standard
-## AI-Native Data Product Architecture - Version 2.2 (Tested & Validated)
+## AI-Native Data Product Architecture - Version 2.3 (Tested & Validated)
 
 ---
 
@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 2.2 |
+| **Version** | 2.3 |
 | **Status** | STANDARD - Tested on Teradata |
-| **Last Updated** | 2026-03-18 |
+| **Last Updated** | 2026-03-20 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Semantic Module (Knowledge & Meaning) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -588,6 +588,44 @@ Semantic describes all modules via entity_metadata and table_relationship.
 - business_rule (validation)
 - data_contract_catalog (use open standards)
 
+### 8.4 Documentation Capture Requirements
+
+Every Semantic module must populate `dp_documentation` as part of its design workflow. The shared `dp_documentation` database and full protocol are defined in the **Memory Module Design Standard, Section 8**.
+
+**Minimum requirements:**
+
+| Record Type | Table | Minimum | Notes |
+|-------------|-------|---------|-------|
+| Module_Registry | `dp_documentation.Module_Registry` | 1 | Register this module with data_product and version |
+| Design_Decision | `dp_documentation.Design_Decision` | 3 | Key architectural and schema choices |
+| Change_Log | `dp_documentation.Change_Log` | 1 | Initial release entry (version 1.0.0) |
+| Business_Glossary | `dp_documentation.Business_Glossary` | 3 | Metadata terms and relationship definitions introduced |
+| Query_Cookbook | `dp_documentation.Query_Cookbook` | 1 | Key query patterns (e.g., multi-hop path discovery, entity lookup) |
+
+**Typical decision categories for Semantic modules:**
+
+| Decision Category | Example |
+|-------------------|---------|
+| `INTEGRATION` | Relationship mapping strategy and join path decisions |
+| `NAMING` | Metadata naming standards and column classification conventions |
+| `ARCHITECTURE` | data_product_map scope and agent discovery strategy |
+| `SCHEMA` | entity_metadata vs column_metadata boundary decisions |
+
+**Decision ID prefix for this module:** `DD-SEMANTIC-{NNN}` (e.g., `DD-SEMANTIC-001`)
+
+**Output file placement:** Write documentation capture SQL as the last numbered file in the semantic deployment directory (e.g., `02-semantic/05-documentation.sql`).
+
+**Full protocol, SQL templates, and ID conventions:** See Memory Module Design Standard, Section 8.3 (Workflow 2 — Capture).
+
+**Design Checklist additions:**
+
+- [ ] `dp_documentation` bootstrap confirmed (Memory Module Section 8.3, Workflow 1)
+- [ ] Module_Registry INSERT generated for this module
+- [ ] Min. 3 Design_Decision INSERTs generated
+- [ ] Change_Log initial release entry generated
+- [ ] Min. 3 Business_Glossary terms captured
+- [ ] Min. 1 Query_Cookbook recipe captured
+
 ---
 
 ## Appendix: Quick Reference
@@ -604,6 +642,7 @@ Semantic describes all modules via entity_metadata and table_relationship.
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 2.3 | 2026-03-20 | Added Section 8.4 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, design checklist additions, and reference to Memory Module Section 8 protocol. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 2.2 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed {table}_key → {table}_id for all GENERATED ALWAYS AS IDENTITY columns | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 2.1 | 2026-03-17 | Updated naming convention: {entity}_id = Surrogate Key, {entity}_key = Natural Business Key, aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.0 | 2025-02-09 | Initial Semantic Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
