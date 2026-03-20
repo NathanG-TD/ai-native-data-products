@@ -1,6 +1,6 @@
 # AI-Native Data Product - Master Design Standard
 
-**Version:** 1.4  
+**Version:** 1.5  
 **Date:** March 20, 2026  
 **Document Type:** Design Standard / Reusable Template  
 **Purpose:** Define the architectural blueprint and design standards for modular, AI-native data products optimized for agentic consumption
@@ -732,6 +732,8 @@ Observability ─────────→ Memory (feedback loop)
 
 **Instance**: An actual row of data within a table. For example, Customer Key CUST-123 is an instance.
 
+**Module**: A self-contained, independently deployable component of an AI-Native Data Product, responsible for a distinct capability (e.g., Domain, Semantic, Search). Each module has its own database, data model, table structures, and design standard. Modules are composable — a data product can implement any combination — and integrate through standard join-back and cross-module reference patterns. The six standard modules are: Domain, Semantic, Search, Prediction, Observability, and Memory (which includes the Documentation Sub-Module).
+
 **Knowledge Graph**: A network of entities and their relationships, enabling semantic reasoning and inference.
 
 **Knowledge Store**: Design-time knowledge that guides HOW to build the data product (standards, patterns, industry models).
@@ -754,6 +756,7 @@ Observability ─────────→ Memory (feedback loop)
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.5 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Added Glossary entry for Module. |
 | 1.4 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Merged Documentation as sub-module of Memory. Updated Documentation Hierarchy tree, Architecture Overview ASCII, Memory module definition (Scope and Integration Points), Implementation Order (added Pre-Phase dp_documentation bootstrap), Physical Naming Conventions (added dp_documentation shared database), Glossary (added Architecture Decision Record, Documentation Sub-Module, dp_documentation). |
 | 1.3 | 2026-03-18 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata | Updated to remain consistent with module design docs, the key/id swap |
 | 1.2 | 2026-02-16 | Nathan Green, Worldwide Data Architecture Team, Teradata | Updated to remain consistent with module design docs, added agent discovery section |
