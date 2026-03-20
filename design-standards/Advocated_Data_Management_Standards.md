@@ -126,7 +126,7 @@ is_current  BYTEINT NOT NULL DEFAULT 1
 **IMPORTANT: PRIMARY INDEX for Temporal Tables**
 
 Temporal tables (bi-temporal, Type 2 SCD, versioned) should use **PRIMARY INDEX** (NUPI), not UNIQUE PRIMARY INDEX, because:
-- Multiple versions exist for the same entity_key
+- Multiple versions exist for the same entity_id
 - Historical records create natural duplicates
 - UNIQUE PRIMARY INDEX would prevent version updates
 
@@ -334,9 +334,9 @@ version_number      INTEGER
 {entity}_id_type    VARCHAR(20)
 
 -- Direct references to Observability (for performance)
-change_event_key    BIGINT  -- FK to Observability.ChangeEvent_H
-lineage_key         BIGINT  -- FK to Observability.DataLineage_H
-quality_key         BIGINT  -- FK to Observability.DataQuality_H
+change_event_id    BIGINT  -- FK to Observability.ChangeEvent_H
+lineage_id         BIGINT  -- FK to Observability.DataLineage_H
+quality_id        BIGINT  -- FK to Observability.DataQuality_H
 
 -- Change detection (if needed in ETL)
 record_hash         VARCHAR(64)
@@ -528,7 +528,7 @@ INSERT INTO Party_H (
 
 -- Track deletion details in Observability
 INSERT INTO Observability.ChangeEvent_H (
-    entity_type, entity_key, change_type,
+    entity_type, entity_id, change_type,
     changed_by, changed_dts, change_reason
 ) VALUES (
     'PARTY', 1001, 'DELETE',
@@ -581,9 +581,9 @@ WHERE is_current = 1
 
 ```sql
 CREATE TABLE Observability.ChangeEvent_H (
-    change_event_key    BIGINT NOT NULL,
+    change_event_id     BIGINT NOT NULL,
     entity_type         VARCHAR(50) NOT NULL,  -- 'PARTY', 'PRODUCT', etc.
-    entity_key          BIGINT NOT NULL,
+    entity_id          BIGINT NOT NULL,
     change_type         VARCHAR(20) NOT NULL,  -- 'INSERT', 'UPDATE', 'DELETE'
     changed_by          VARCHAR(100) NOT NULL,
     changed_dts         TIMESTAMP(6) WITH TIME ZONE NOT NULL,
@@ -591,7 +591,7 @@ CREATE TABLE Observability.ChangeEvent_H (
     changed_columns     VARCHAR(2000),  -- JSON array of changed columns
     old_values_json     JSON,
     new_values_json     JSON,
-    PRIMARY INDEX (entity_key, changed_dts)
+    PRIMARY INDEX (entity_id, changed_dts)
 )
 PARTITION BY RANGE_N(
     changed_dts BETWEEN DATE '2020-01-01' AND DATE '2030-12-31' 
@@ -603,9 +603,9 @@ PARTITION BY RANGE_N(
 
 ```sql
 CREATE TABLE Observability.DataLineage_H (
-    lineage_key         BIGINT NOT NULL,
+    lineage_id         BIGINT NOT NULL,
     entity_type         VARCHAR(50) NOT NULL,
-    entity_key          BIGINT NOT NULL,
+    entity_id          BIGINT NOT NULL,
     source_system       VARCHAR(50) NOT NULL,
     source_record_id    VARCHAR(100),
     batch_id            VARCHAR(50),
@@ -613,7 +613,7 @@ CREATE TABLE Observability.DataLineage_H (
     extraction_dts      TIMESTAMP(6) WITH TIME ZONE,
     transformation_name VARCHAR(100),
     lineage_metadata_json JSON,
-    PRIMARY INDEX (entity_key)
+    PRIMARY INDEX (entity_id)
 );
 ```
 
@@ -621,13 +621,13 @@ CREATE TABLE Observability.DataLineage_H (
 
 ```sql
 CREATE TABLE Observability.DataQuality_H (
-    quality_key         BIGINT NOT NULL,
+    quality_id         BIGINT NOT NULL,
     entity_type         VARCHAR(50) NOT NULL,
-    entity_key          BIGINT NOT NULL,
+    entity_id          BIGINT NOT NULL,
     evaluated_dts       TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     quality_score       DECIMAL(3,2) NOT NULL,
     rule_results_json   JSON,  -- Array of {rule_id, passed, message}
-    PRIMARY INDEX (entity_key, evaluated_dts)
+    PRIMARY INDEX (entity_id, evaluated_dts)
 )
 PARTITION BY RANGE_N(
     evaluated_dts BETWEEN DATE '2024-01-01' AND DATE '2030-12-31' 
@@ -647,27 +647,27 @@ CREATE TABLE Party_H (
     -- ... core columns ...
     
     -- Optional: Direct references for performance
-    change_event_key BIGINT,  -- FK to most recent ChangeEvent
-    lineage_key BIGINT,       -- FK to current DataLineage
-    quality_key BIGINT,       -- FK to latest DataQuality
+    change_event_id BIGINT,  -- FK to most recent ChangeEvent
+    lineage_id BIGINT,       -- FK to current DataLineage
+    quality_id BIGINT,       -- FK to latest DataQuality
     
-    FOREIGN KEY (change_event_key) 
-        REFERENCES Observability.ChangeEvent_H(change_event_key),
-    FOREIGN KEY (lineage_key) 
-        REFERENCES Observability.DataLineage_H(lineage_key),
-    FOREIGN KEY (quality_key) 
-        REFERENCES Observability.DataQuality_H(quality_key)
+    FOREIGN KEY (change_event_id) 
+        REFERENCES Observability.ChangeEvent_H(change_event_id),
+    FOREIGN KEY (lineage_id) 
+        REFERENCES Observability.DataLineage_H(lineage_id),
+    FOREIGN KEY (quality_id) 
+        REFERENCES Observability.DataQuality_H(quality_id)
 );
 
 -- Query: Fast direct join
 SELECT p.*, ce.changed_by, dl.source_system, dq.quality_score
 FROM Party_H p
 LEFT JOIN Observability.ChangeEvent_H ce 
-    ON ce.change_event_key = p.change_event_key
+    ON ce.change_event_id = p.change_event_id
 LEFT JOIN Observability.DataLineage_H dl 
-    ON dl.lineage_key = p.lineage_key
+    ON dl.lineage_id = p.lineage_id
 LEFT JOIN Observability.DataQuality_H dq 
-    ON dq.quality_key = p.quality_key
+    ON dq.quality_id = p.quality_id
 WHERE p.is_current = 1;
 ```
 
@@ -687,19 +687,19 @@ CREATE TABLE Party_H (
 SELECT p.*, ce.changed_by, dl.source_system, dq.quality_score
 FROM Party_H p
 LEFT JOIN (
-    SELECT entity_key, changed_by, changed_dts,
-           ROW_NUMBER() OVER (PARTITION BY entity_key ORDER BY changed_dts DESC) AS rn
+    SELECT entity_id, changed_by, changed_dts,
+           ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY changed_dts DESC) AS rn
     FROM Observability.ChangeEvent_H
     WHERE entity_type = 'PARTY'
-) ce ON ce.entity_key = p.party_id AND ce.rn = 1
+) ce ON ce.entity_id = p.party_id AND ce.rn = 1
 LEFT JOIN Observability.DataLineage_H dl
-    ON dl.entity_type = 'PARTY' AND dl.entity_key = p.party_id
+    ON dl.entity_type = 'PARTY' AND dl.entity_id = p.party_id
 LEFT JOIN (
-    SELECT entity_key, quality_score, evaluated_dts,
-           ROW_NUMBER() OVER (PARTITION BY entity_key ORDER BY evaluated_dts DESC) AS rn
+    SELECT entity_id, quality_score, evaluated_dts,
+           ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY evaluated_dts DESC) AS rn
     FROM Observability.DataQuality_H
     WHERE entity_type = 'PARTY'
-) dq ON dq.entity_key = p.party_id AND dq.rn = 1
+) dq ON dq.entity_id = p.party_id AND dq.rn = 1
 WHERE p.is_current = 1;
 ```
 
@@ -722,11 +722,11 @@ SELECT
     dq.evaluated_dts AS quality_evaluated_dts
 FROM Party_H p
 LEFT JOIN Observability.ChangeEvent_H ce 
-    ON ce.change_event_key = p.change_event_key  -- If using FK approach
+    ON ce.change_event_id = p.change_event_id  -- If using FK approach
 LEFT JOIN Observability.DataLineage_H dl 
-    ON dl.lineage_key = p.lineage_key
+    ON dl.lineage_id = p.lineage_id
 LEFT JOIN Observability.DataQuality_H dq 
-    ON dq.quality_key = p.quality_key
+    ON dq.quality_id = p.quality_id
 WHERE p.is_current = 1;
 
 -- Agent query (simple)
@@ -737,7 +737,7 @@ SELECT * FROM Party_Complete WHERE party_key = 'CUST-12345';
 
 | Scenario | Recommended Approach |
 |----------|---------------------|
-| **High-volume tables (>100M rows)** | No FK, join by entity_key, use views |
+| **High-volume tables (>100M rows)** | No FK, join by entity_id, use views |
 | **Medium-volume (10M-100M)** | FK references for performance |
 | **Low-volume (<10M)** | Either approach acceptable |
 | **Agent-heavy workload** | Pre-joined views essential |
@@ -878,7 +878,7 @@ WHERE is_current = 1
 ```sql
 -- Store quality time-series in Observability
 INSERT INTO Observability.DataQuality_H (
-    entity_type, entity_key, evaluated_dts, quality_score,
+    entity_type, entity_id, evaluated_dts, quality_score,
     rule_results_json
 ) VALUES (
     'PARTY', 1001, CURRENT_TIMESTAMP(6), 0.80,
@@ -894,11 +894,11 @@ INSERT INTO Observability.DataQuality_H (
 SELECT p.party_key, p.legal_name, dq.quality_score
 FROM Party_H p
 INNER JOIN (
-    SELECT entity_key, quality_score,
-           ROW_NUMBER() OVER (PARTITION BY entity_key ORDER BY evaluated_dts DESC) AS rn
+    SELECT entity_id, quality_score,
+           ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY evaluated_dts DESC) AS rn
     FROM Observability.DataQuality_H
     WHERE entity_type = 'PARTY'
-) dq ON dq.entity_key = p.party_id AND dq.rn = 1
+) dq ON dq.entity_id = p.party_id AND dq.rn = 1
 WHERE p.is_current = 1
   AND dq.quality_score >= 0.75;
 ```
@@ -915,11 +915,11 @@ SELECT p.party_id, p.party_key, p.legal_name,
        dq.rule_results_json
 FROM Party_H p
 INNER JOIN (
-    SELECT entity_key, quality_score, evaluated_dts, rule_results_json,
-           ROW_NUMBER() OVER (PARTITION BY entity_key ORDER BY evaluated_dts DESC) AS rn
+    SELECT entity_id, quality_score, evaluated_dts, rule_results_json,
+           ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY evaluated_dts DESC) AS rn
     FROM Observability.DataQuality_H
     WHERE entity_type = 'PARTY'
-) dq ON dq.entity_key = p.party_id AND dq.rn = 1
+) dq ON dq.entity_id = p.party_id AND dq.rn = 1
 WHERE p.is_current = 1
   AND p.is_deleted = 0
   AND dq.quality_score >= 0.75;
@@ -957,9 +957,9 @@ SELECT * FROM Party_HighQuality WHERE party_key = 'CUST-12345';
 
 ```sql
 CREATE TABLE Observability.ChangeEvent_H (
-    change_event_key    BIGINT NOT NULL,
+    change_event_id    BIGINT NOT NULL,
     entity_type         VARCHAR(50) NOT NULL,
-    entity_key          BIGINT NOT NULL,
+    entity_id          BIGINT NOT NULL,
     change_type         VARCHAR(20) NOT NULL,  -- 'INSERT', 'UPDATE', 'DELETE'
     
     -- Who and when
@@ -979,7 +979,7 @@ CREATE TABLE Observability.ChangeEvent_H (
     application_name    VARCHAR(100),
     ip_address          VARCHAR(50),
     
-    PRIMARY INDEX (entity_key, changed_dts)
+    PRIMARY INDEX (entity_id, changed_dts)
 )
 PARTITION BY RANGE_N(
     changed_dts BETWEEN DATE '2020-01-01' AND DATE '2030-12-31' 
@@ -992,7 +992,7 @@ PARTITION BY RANGE_N(
 ```sql
 -- Example: Capture UPDATE event
 INSERT INTO Observability.ChangeEvent_H (
-    change_event_key, entity_type, entity_key, change_type,
+    change_event_id, entity_type, entity_id, change_type,
     changed_by, changed_dts, change_reason,
     changed_columns, old_values_json, new_values_json
 )
@@ -1023,20 +1023,20 @@ SELECT
     new_values_json
 FROM Observability.ChangeEvent_H
 WHERE entity_type = 'PARTY'
-  AND entity_key = 1001
+  AND entity_id = 1001
 ORDER BY changed_dts;
 
 -- Who deleted this record and why?
 SELECT changed_by, changed_dts, change_reason
 FROM Observability.ChangeEvent_H
 WHERE entity_type = 'PARTY'
-  AND entity_key = 1001
+  AND entity_id = 1001
   AND change_type = 'DELETE'
 ORDER BY changed_dts DESC
 LIMIT 1;
 
 -- All changes by a specific user
-SELECT entity_type, entity_key, change_type, changed_dts
+SELECT entity_type, entity_id, change_type, changed_dts
 FROM Observability.ChangeEvent_H
 WHERE changed_by = 'data_steward@company.com'
   AND changed_dts >= CURRENT_DATE - 30
@@ -1091,7 +1091,7 @@ START: What is primary access pattern?
 ├─ Single-row lookup by natural key?
 │  └─ Use natural key UPI ✅
 ├─ Range queries on time + entity?
-│  └─ Use composite (entity_key, time_column) NUPI ✅
+│  └─ Use composite (entity_id, time_column) NUPI ✅
 ├─ Frequent joins to parent entity?
 │  └─ Use parent FK for co-location NUPI ✅
 └─ Mixed patterns?
@@ -1338,7 +1338,7 @@ WITH COLUMN_PARTITION = (
 
 -- Pattern 2: Specific algorithm for very large text
 CREATE TABLE Document_H (
-    document_key BIGINT NOT NULL,
+    document_id BIGINT NOT NULL,
     document_content CLOB
 )
 WITH COLUMN_PARTITION = (
@@ -1423,16 +1423,16 @@ START: What is table volume?
 └─ > 100M rows → Core Only + Views ✅ (Advocated)
     │
     ├─ Need fast audit access?
-    │  ├─ YES → Add change_event_key FK
-    │  └─ NO → Join by entity_key (no FK)
+    │  ├─ YES → Add change_event_id FK
+    │  └─ NO → Join by entity_id (no FK)
     │
     ├─ Need fast lineage access?
-    │  ├─ YES → Add lineage_key FK
-    │  └─ NO → Join by entity_key (no FK)
+    │  ├─ YES → Add lineage_id FK
+    │  └─ NO → Join by entity_id (no FK)
     │
     └─ Need fast quality access?
-       ├─ YES → Add quality_key FK
-       └─ NO → Join by entity_key (no FK)
+       ├─ YES → Add quality_id FK
+       └─ NO → Join by entity_id (no FK)
 ```
 
 ### 10.3 Delete Strategy Decision
@@ -1467,6 +1467,7 @@ START: What is table volume?
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.3 | 2026-03-20 | Completed swap of id and key to be consistent throughout design standards | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.2 | 2026-03-18 | Renamed is_current_version → is_current throughout, aligned with Domain Module Design Standard naming convention | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2026-03-17 | Updated naming convention throughout: {entity}_id = Surrogate Key (BIGINT), {entity}_key = Natural Business Key (VARCHAR), aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.0 | 2025-02-09 | Initial Advocated Data Management Standards | Data Architecture |
