@@ -365,12 +365,12 @@ ai-native-data-product/
 
 | Phase | Module | Database pattern | Notes |
 |-------|--------|-----------------|-------|
-| 1 | Domain | `{Name}_Domain` | Always first |
-| 1 | Semantic | `{Name}_Semantic` | Always second |
-| 2 | Search | `{Name}_Search` | Either order |
-| 2 | Prediction | `{Name}_Prediction` | Either order |
-| 3 | Observability | `{Name}_Observability` | Either order |
-| 3 | Memory | `{Name}_Memory` | Includes documentation tables — last |
+| 1 | Memory | `{Name}_Memory` | First — hosts documentation tables for all modules |
+| 1 | Semantic | `{Name}_Semantic` | First — hosts discovery metadata for all modules |
+| 2 | Domain | `{Name}_Domain` | Entity foundation |
+| 2 | Observability | `{Name}_Observability` | Begins monitoring Domain immediately |
+| 3 | Search | `{Name}_Search` | Requires Domain entities |
+| 3 | Prediction | `{Name}_Prediction` | Requires Domain entities |
 
 ## Reference: Documentation Capture ID Prefixes
 

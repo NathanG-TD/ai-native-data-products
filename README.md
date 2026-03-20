@@ -74,9 +74,9 @@ with no external dependencies.
 
 | Phase | Modules | Notes |
 |-------|---------|-------|
-| 1 | Domain, Semantic | Always first — foundation and discovery layer |
-| 2 | Search, Prediction | Either order |
-| 3 | Observability, Memory | Memory last — documentation tables created here |
+| 1 | Memory, Semantic | Memory hosts documentation tables needed by all modules; Semantic hosts discovery metadata needed by all modules — both must exist before any other module deploys |
+| 2 | Domain, Observability | Domain is the entity foundation; Observability begins monitoring Domain immediately |
+| 3 | Search, Prediction | Both require Domain entities to exist first |
 
 ---
 
@@ -140,7 +140,7 @@ autonomous discovery via the Semantic module.
 
 | Document | Version |
 |----------|---------|
-| AI_Native_Data_Product_Master_Design | 1.7 |
+| AI_Native_Data_Product_Master_Design | 1.8 |
 | Domain_Module_Design_Standard | 2.3 |
 | Semantic_Module_Design_Standard | 2.5 |
 | Search_Module_Design_Standard | 1.5 |

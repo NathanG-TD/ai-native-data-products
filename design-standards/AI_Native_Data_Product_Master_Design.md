@@ -1,6 +1,6 @@
 # AI-Native Data Product - Master Design Standard
 
-**Version:** 1.7  
+**Version:** 1.8  
 **Date:** March 20, 2026  
 **Document Type:** Design Standard / Reusable Template  
 **Purpose:** Define the architectural blueprint and design standards for modular, AI-native data products optimized for agentic consumption
@@ -664,28 +664,32 @@ CREATE TABLE Customer360.P_customer_features (
 
 ### Recommended Implementation Order
 
-**Phase 1: Foundation**
-1. Domain/Subject Data (required first - everything else builds on this)
-2. Semantic (enables self-description and discoverability)
+**Phase 1: Infrastructure (Memory & Semantic)**
+1. Memory — creates `{ProductName}_Memory` database including all documentation tables. Every subsequent module writes documentation INSERTs here as its final deployment step.
+2. Semantic — creates `{ProductName}_Semantic` database. Every subsequent module writes entity, column, and relationship registration INSERTs here as part of its deployment.
 
-**Phase 2: Core AI Capabilities**
-3. Search (vector embeddings and similarity)
-4. Prediction (feature store and ML)
+Both must exist before any other module deploys.
 
-**Phase 3: Intelligence & Learning**
-5. Observability (monitor and learn from usage)
-6. Memory (long-term learning and collaboration)
+**Phase 2: Foundation (Domain & Observability)**
+3. Domain — core business entities; documentation and Semantic registration written on deploy
+4. Observability — begins monitoring Domain immediately; coverage expands as later modules deploy
+
+**Phase 3: Enhancement (Search & Prediction)**
+5. Search — requires Domain entities to embed
+6. Prediction — requires Domain entities to featurise
 
 ### Module Dependencies
 ```
-Domain/Subject ────┬───→ Search
-                   ├───→ Prediction
-                   ├───→ Observability
-                   └───→ Memory
+Memory ────────────────→ (hosts documentation tables for all modules)
+Semantic ───────────────→ (hosts discovery metadata for all modules)
+    │
+    Both must exist first
+    │
+Domain ────────┬────────→ Search
+               ├────────→ Prediction
+               └────────→ (entity foundation for all modules)
 
-Semantic ──────────┴───→ (describes all modules)
-
-Observability ─────────→ Memory (feedback loop)
+Observability ──────────→ Memory (closed-loop learning feedback)
 ```
 
 ---
@@ -736,7 +740,8 @@ Observability ─────────→ Memory (feedback loop)
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
-| 1.7 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Fixed = 'Y' filter values in agent discovery example queries (Section: Agent Discovery via Semantic Map) to = 1 to align with platform boolean standard. |
+| 1.8 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Corrected module deployment order. Memory and Semantic are now Phase 1 (both must exist before any other module deploys — Memory hosts documentation tables, Semantic hosts discovery metadata). Domain and Observability are Phase 2. Search and Prediction are Phase 3. Updated Implementation Order section and Module Dependencies diagram. |
+| 1.7 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Fixed = 'Y' filter values in agent discovery example queries to = 1 to align with platform boolean standard. |
 | 1.6 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Revised to align with data product self-containment principle. Removed shared dp_documentation database pattern. Documentation tables now co-located in {ProductName}_Memory database as design memory alongside runtime memory. Removed Pre-Phase bootstrap from implementation order. Updated Memory module definition, Physical Naming Conventions, and Glossary (revised Documentation Sub-Module entry, removed dp_documentation entry). |
 | 1.5 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Added Glossary entry for Module. |
 | 1.4 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Merged Documentation as sub-module of Memory. Updated Documentation Hierarchy tree, Architecture Overview ASCII, Memory module definition (Scope and Integration Points), Implementation Order (added Pre-Phase dp_documentation bootstrap), Physical Naming Conventions (added dp_documentation shared database), Glossary (added Architecture Decision Record, Documentation Sub-Module, dp_documentation). |
