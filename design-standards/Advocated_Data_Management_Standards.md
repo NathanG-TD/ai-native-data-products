@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.0 |
+| **Version** | 1.2 |
 | **Status** | GUIDANCE |
-| **Last Updated** | 2025-02-09 |
+| **Last Updated** | 2026-03-18 |
 | **Owner** | Data Architecture |
 | **Scope** | Cross-Module Data Management Guidance |
 | **Type** | Recommended Practices |
@@ -119,31 +119,31 @@ transaction_to_dts   TIMESTAMP(6) WITH TIME ZONE NOT NULL
     DEFAULT TIMESTAMP '9999-12-31 23:59:59.999999+00:00'
     COMMENT 'When this version was superseded in database',
 
-is_current_version  BYTEINT NOT NULL DEFAULT 1
+is_current  BYTEINT NOT NULL DEFAULT 1
     COMMENT '1 = Current version, 0 = Historical version',
 ```
 
 **IMPORTANT: PRIMARY INDEX for Temporal Tables**
 
 Temporal tables (bi-temporal, Type 2 SCD, versioned) should use **PRIMARY INDEX** (NUPI), not UNIQUE PRIMARY INDEX, because:
-- Multiple versions exist for the same entity_key
+- Multiple versions exist for the same entity_id
 - Historical records create natural duplicates
 - UNIQUE PRIMARY INDEX would prevent version updates
 
 ```sql
 -- CORRECT for temporal tables
 CREATE TABLE Party_H (
-    party_key BIGINT NOT NULL,
+    party_id BIGINT NOT NULL,
     -- ... bi-temporal columns ...
 )
-PRIMARY INDEX (party_key);  -- NUPI allows multiple versions
+PRIMARY INDEX (party_id);  -- NUPI allows multiple versions
 
 -- INCORRECT for temporal tables
 CREATE TABLE Party_H (
-    party_key BIGINT NOT NULL,
+    party_id BIGINT NOT NULL,
     -- ... bi-temporal columns ...
 )
-UNIQUE PRIMARY INDEX (party_key);  -- Would fail on version 2
+UNIQUE PRIMARY INDEX (party_id);  -- Would fail on version 2
 ```
 
 **Use UNIQUE PRIMARY INDEX only for:**
@@ -157,10 +157,10 @@ UNIQUE PRIMARY INDEX (party_key);  -- Would fail on version 2
 
 ```sql
 INSERT INTO Party_H (
-    party_key, party_id, legal_name,
+    party_id, party_key, legal_name,
     valid_from_dts, valid_to_dts,
     transaction_from_dts, transaction_to_dts,
-    is_current_version, is_deleted
+    is_current, is_deleted
 ) VALUES (
     1001, 'CUST-12345', 'Jane Doe',
     TIMESTAMP '2024-01-01 00:00:00+00:00',
@@ -178,15 +178,15 @@ INSERT INTO Party_H (
 UPDATE Party_H
 SET valid_to_dts = TIMESTAMP '2024-06-15 00:00:00+00:00',
     transaction_to_dts = CURRENT_TIMESTAMP(6),
-    is_current_version = 0
-WHERE party_key = 1001 AND is_current_version = 1;
+    is_current = 0
+WHERE party_id = 1001 AND is_current = 1;
 
 -- Step 2: Insert new version
 INSERT INTO Party_H (
-    party_key, party_id, legal_name,
+    party_id, party_key, legal_name,
     valid_from_dts, valid_to_dts,
     transaction_from_dts, transaction_to_dts,
-    is_current_version, is_deleted
+    is_current, is_deleted
 ) VALUES (
     1001, 'CUST-12345', 'Jane Smith',  -- NAME CHANGED
     TIMESTAMP '2024-06-15 00:00:00+00:00',  -- When change occurred
@@ -206,17 +206,17 @@ INSERT INTO Party_H (
 -- Step 1: Close incorrect version in transaction time
 UPDATE Party_H
 SET transaction_to_dts = CURRENT_TIMESTAMP(6),
-    is_current_version = 0
-WHERE party_key = 1001
+    is_current = 0
+WHERE party_id = 1001
   AND valid_from_dts = TIMESTAMP '2024-06-15 00:00:00+00:00'
-  AND is_current_version = 1;
+  AND is_current = 1;
 
 -- Step 2: Insert corrected version with new transaction time
 INSERT INTO Party_H (
-    party_key, party_id, legal_name,
+    party_id, party_key, legal_name,
     valid_from_dts, valid_to_dts,
     transaction_from_dts, transaction_to_dts,
-    is_current_version, is_deleted
+    is_current, is_deleted
 ) VALUES (
     1001, 'CUST-12345', 'Jane Smith',
     TIMESTAMP '2024-06-10 00:00:00+00:00',  -- CORRECTED valid time
@@ -236,10 +236,10 @@ INSERT INTO Party_H (
 #### Get Current State
 
 ```sql
-SELECT party_key, party_id, legal_name
+SELECT party_id, party_key, legal_name
 FROM Party_H
-WHERE party_id = 'CUST-12345'
-  AND is_current_version = 1
+WHERE party_key = 'CUST-12345'
+  AND is_current = 1
   AND is_deleted = 0;
 ```
 
@@ -248,16 +248,16 @@ WHERE party_id = 'CUST-12345'
 ```sql
 -- "What was the customer's name on 2024-05-01?"
 -- Critical for computing features with temporal correctness
-SELECT party_key, party_id, legal_name
+SELECT party_id, party_key, legal_name
 FROM Party_H
-WHERE party_id = 'CUST-12345'
+WHERE party_key = 'CUST-12345'
   AND TIMESTAMP '2024-05-01 00:00:00+00:00' >= valid_from_dts
   AND TIMESTAMP '2024-05-01 00:00:00+00:00' < valid_to_dts
   AND is_deleted = 0
   AND transaction_from_dts = (
       SELECT MAX(transaction_from_dts)
       FROM Party_H p2
-      WHERE p2.party_key = Party_H.party_key
+      WHERE p2.party_id = Party_H.party_id
         AND p2.transaction_from_dts <= TIMESTAMP '2024-05-01 23:59:59.999999+00:00'
   );
 ```
@@ -266,9 +266,9 @@ WHERE party_id = 'CUST-12345'
 
 ```sql
 -- "What did our database show on 2024-07-15 (before correction)?"
-SELECT party_key, party_id, legal_name
+SELECT party_id, party_key, legal_name
 FROM Party_H
-WHERE party_id = 'CUST-12345'
+WHERE party_key = 'CUST-12345'
   AND transaction_from_dts <= TIMESTAMP '2024-07-15 23:59:59.999999+00:00'
   AND transaction_to_dts > TIMESTAMP '2024-07-15 23:59:59.999999+00:00';
 ```
@@ -284,8 +284,8 @@ WHERE party_id = 'CUST-12345'
 ```sql
 -- Type 2 SCD (simpler temporal)
 CREATE TABLE Party_H (
-    party_key BIGINT NOT NULL,
-    party_id VARCHAR(50) NOT NULL,
+    party_id BIGINT NOT NULL,
+    party_key VARCHAR(50) NOT NULL,
     effective_date DATE NOT NULL,
     expiration_date DATE NOT NULL DEFAULT DATE '9999-12-31',
     is_current BYTEINT NOT NULL DEFAULT 1,
@@ -312,13 +312,13 @@ CREATE TABLE Party_H (
 **Minimum viable set for AI-Native domain tables:**
 
 ```sql
-{entity}_key        BIGINT NOT NULL             -- Surrogate key
-{entity}_id         VARCHAR(50) NOT NULL        -- Natural key
+{entity}_id        BIGINT NOT NULL             -- Surrogate key
+{entity}_key       VARCHAR(50) NOT NULL        -- Natural key
 valid_from_dts      TIMESTAMP(6) WITH TIME ZONE NOT NULL
 valid_to_dts        TIMESTAMP(6) WITH TIME ZONE NOT NULL
 transaction_from_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL
 transaction_to_dts   TIMESTAMP(6) WITH TIME ZONE NOT NULL
-is_current_version  BYTEINT NOT NULL DEFAULT 1
+is_current  BYTEINT NOT NULL DEFAULT 1
 is_deleted          BYTEINT NOT NULL DEFAULT 0
 ```
 
@@ -334,9 +334,9 @@ version_number      INTEGER
 {entity}_id_type    VARCHAR(20)
 
 -- Direct references to Observability (for performance)
-change_event_key    BIGINT  -- FK to Observability.ChangeEvent_H
-lineage_key         BIGINT  -- FK to Observability.DataLineage_H
-quality_key         BIGINT  -- FK to Observability.DataQuality_H
+change_event_id    BIGINT  -- FK to Observability.ChangeEvent_H
+lineage_id         BIGINT  -- FK to Observability.DataLineage_H
+quality_id        BIGINT  -- FK to Observability.DataQuality_H
 
 -- Change detection (if needed in ETL)
 record_hash         VARCHAR(64)
@@ -400,23 +400,23 @@ Observability.DataQuality_H    -- Quality time-series
 ```sql
 CREATE TABLE Party_H (
     -- Surrogate key (advocated)
-    party_key           BIGINT NOT NULL
+    party_id           BIGINT NOT NULL
         COMMENT 'System-generated unique identifier, never reused',
     
     -- Natural key (still required for business access)
-    party_id            VARCHAR(50) NOT NULL
+    party_key           VARCHAR(50) NOT NULL
         COMMENT 'Natural business key from source system',
     
     -- ... other columns ...
     
-    PRIMARY INDEX (party_key)  -- PI on surrogate key
+    PRIMARY INDEX (party_id)  -- PI on surrogate key
 )
-UNIQUE PRIMARY INDEX (party_key, valid_from_dts, transaction_from_dts);
+UNIQUE PRIMARY INDEX (party_id, valid_from_dts, transaction_from_dts);
 
 -- Secondary index on natural key for lookups
 CREATE UNIQUE INDEX idx_party_natural_key
-ON Party_H (party_id)
-WHERE is_current_version = 1 AND is_deleted = 0;
+ON Party_H (party_key)
+WHERE is_current = 1 AND is_deleted = 0;
 ```
 
 ### 4.3 Surrogate Key Generation
@@ -426,19 +426,19 @@ WHERE is_current_version = 1 AND is_deleted = 0;
 ```sql
 -- Option 1: Teradata IDENTITY column (recommended)
 CREATE TABLE Party_H (
-    party_key BIGINT GENERATED ALWAYS AS IDENTITY 
+    party_id BIGINT GENERATED ALWAYS AS IDENTITY 
         (START WITH 1 INCREMENT BY 1) NOT NULL,
     -- ... other columns ...
 );
 
 -- Option 2: Sequence (more flexible)
-CREATE SEQUENCE party_key_seq 
+CREATE SEQUENCE party_id_seq 
     START WITH 1 
     INCREMENT BY 1 
     NO CYCLE;
 
-INSERT INTO Party_H (party_key, party_id, ...)
-VALUES (party_key_seq.NEXTVAL, 'CUST-12345', ...);
+INSERT INTO Party_H (party_id, party_key, ...)
+VALUES (party_id_seq.NEXTVAL, 'CUST-12345', ...);
 ```
 
 ### 4.4 When Natural Keys Are Acceptable
@@ -453,10 +453,10 @@ VALUES (party_key_seq.NEXTVAL, 'CUST-12345', ...);
 
 ```sql
 CREATE TABLE Product_H (
-    product_key BIGINT NOT NULL,  -- Still use surrogate internally
-    sku VARCHAR(20) NOT NULL,     -- Natural key
+    product_id BIGINT NOT NULL,  -- Still use surrogate internally
+    sku VARCHAR(20) NOT NULL,    -- Natural key
     -- ...
-    PRIMARY INDEX (product_key)   -- But PI on surrogate for consistency
+    PRIMARY INDEX (product_id)  -- But PI on surrogate for consistency
 );
 ```
 
@@ -466,8 +466,8 @@ CREATE TABLE Product_H (
 
 ### 5.1 Why We Advocate Soft Deletes
 
-**Hard Delete**: `DELETE FROM Party_H WHERE party_key = 1001`
-**Soft Delete**: `UPDATE Party_H SET is_deleted = 1 WHERE party_key = 1001`
+**Hard Delete**: `DELETE FROM Party_H WHERE party_id = 1001`
+**Soft Delete**: `UPDATE Party_H SET is_deleted = 1 WHERE party_id = 1001`
 
 #### Benefits for AI-Native Data Products
 
@@ -506,29 +506,29 @@ deleted_reason VARCHAR(500)
 UPDATE Party_H
 SET valid_to_dts = CURRENT_TIMESTAMP(6),
     transaction_to_dts = CURRENT_TIMESTAMP(6),
-    is_current_version = 0
-WHERE party_key = 1001
-  AND is_current_version = 1;
+    is_current = 0
+WHERE party_id = 1001
+  AND is_current = 1;
 
 -- Step 2: Insert soft-deleted version
 INSERT INTO Party_H (
-    party_key, party_id, legal_name,
+    party_id, party_key, legal_name,
     valid_from_dts, valid_to_dts,
     transaction_from_dts, transaction_to_dts,
-    is_current_version, is_deleted
+    is_current, is_deleted
 ) VALUES (
     1001, 'CUST-12345', 'Jane Smith',
     CURRENT_TIMESTAMP(6),  -- Deleted as of now
     TIMESTAMP '9999-12-31 23:59:59.999999+00:00',
     CURRENT_TIMESTAMP(6),
     TIMESTAMP '9999-12-31 23:59:59.999999+00:00',
-    1,  -- is_current_version = 1 (this IS the current state: deleted)
+    1,  -- is_current = 1 (this IS the current state: deleted)
     1   -- is_deleted = 1
 );
 
 -- Track deletion details in Observability
 INSERT INTO Observability.ChangeEvent_H (
-    entity_type, entity_key, change_type,
+    entity_type, entity_id, change_type,
     changed_by, changed_dts, change_reason
 ) VALUES (
     'PARTY', 1001, 'DELETE',
@@ -541,16 +541,16 @@ INSERT INTO Observability.ChangeEvent_H (
 ```sql
 -- Current active records only (most common)
 SELECT * FROM Party_H
-WHERE is_current_version = 1
+WHERE is_current = 1
   AND is_deleted = 0;
 
 -- Include deleted records
 SELECT * FROM Party_H
-WHERE is_current_version = 1;
+WHERE is_current = 1;
 
 -- Only deleted records
 SELECT * FROM Party_H
-WHERE is_current_version = 1
+WHERE is_current = 1
   AND is_deleted = 1;
 ```
 
@@ -581,9 +581,9 @@ WHERE is_current_version = 1
 
 ```sql
 CREATE TABLE Observability.ChangeEvent_H (
-    change_event_key    BIGINT NOT NULL,
+    change_event_id     BIGINT NOT NULL,
     entity_type         VARCHAR(50) NOT NULL,  -- 'PARTY', 'PRODUCT', etc.
-    entity_key          BIGINT NOT NULL,
+    entity_id          BIGINT NOT NULL,
     change_type         VARCHAR(20) NOT NULL,  -- 'INSERT', 'UPDATE', 'DELETE'
     changed_by          VARCHAR(100) NOT NULL,
     changed_dts         TIMESTAMP(6) WITH TIME ZONE NOT NULL,
@@ -591,7 +591,7 @@ CREATE TABLE Observability.ChangeEvent_H (
     changed_columns     VARCHAR(2000),  -- JSON array of changed columns
     old_values_json     JSON,
     new_values_json     JSON,
-    PRIMARY INDEX (entity_key, changed_dts)
+    PRIMARY INDEX (entity_id, changed_dts)
 )
 PARTITION BY RANGE_N(
     changed_dts BETWEEN DATE '2020-01-01' AND DATE '2030-12-31' 
@@ -603,9 +603,9 @@ PARTITION BY RANGE_N(
 
 ```sql
 CREATE TABLE Observability.DataLineage_H (
-    lineage_key         BIGINT NOT NULL,
+    lineage_id         BIGINT NOT NULL,
     entity_type         VARCHAR(50) NOT NULL,
-    entity_key          BIGINT NOT NULL,
+    entity_id          BIGINT NOT NULL,
     source_system       VARCHAR(50) NOT NULL,
     source_record_id    VARCHAR(100),
     batch_id            VARCHAR(50),
@@ -613,7 +613,7 @@ CREATE TABLE Observability.DataLineage_H (
     extraction_dts      TIMESTAMP(6) WITH TIME ZONE,
     transformation_name VARCHAR(100),
     lineage_metadata_json JSON,
-    PRIMARY INDEX (entity_key)
+    PRIMARY INDEX (entity_id)
 );
 ```
 
@@ -621,13 +621,13 @@ CREATE TABLE Observability.DataLineage_H (
 
 ```sql
 CREATE TABLE Observability.DataQuality_H (
-    quality_key         BIGINT NOT NULL,
+    quality_id         BIGINT NOT NULL,
     entity_type         VARCHAR(50) NOT NULL,
-    entity_key          BIGINT NOT NULL,
+    entity_id          BIGINT NOT NULL,
     evaluated_dts       TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     quality_score       DECIMAL(3,2) NOT NULL,
     rule_results_json   JSON,  -- Array of {rule_id, passed, message}
-    PRIMARY INDEX (entity_key, evaluated_dts)
+    PRIMARY INDEX (entity_id, evaluated_dts)
 )
 PARTITION BY RANGE_N(
     evaluated_dts BETWEEN DATE '2024-01-01' AND DATE '2030-12-31' 
@@ -643,43 +643,43 @@ PARTITION BY RANGE_N(
 
 ```sql
 CREATE TABLE Party_H (
-    party_key BIGINT NOT NULL,
+    party_id BIGINT NOT NULL,
     -- ... core columns ...
     
     -- Optional: Direct references for performance
-    change_event_key BIGINT,  -- FK to most recent ChangeEvent
-    lineage_key BIGINT,       -- FK to current DataLineage
-    quality_key BIGINT,       -- FK to latest DataQuality
+    change_event_id BIGINT,  -- FK to most recent ChangeEvent
+    lineage_id BIGINT,       -- FK to current DataLineage
+    quality_id BIGINT,       -- FK to latest DataQuality
     
-    FOREIGN KEY (change_event_key) 
-        REFERENCES Observability.ChangeEvent_H(change_event_key),
-    FOREIGN KEY (lineage_key) 
-        REFERENCES Observability.DataLineage_H(lineage_key),
-    FOREIGN KEY (quality_key) 
-        REFERENCES Observability.DataQuality_H(quality_key)
+    FOREIGN KEY (change_event_id) 
+        REFERENCES Observability.ChangeEvent_H(change_event_id),
+    FOREIGN KEY (lineage_id) 
+        REFERENCES Observability.DataLineage_H(lineage_id),
+    FOREIGN KEY (quality_id) 
+        REFERENCES Observability.DataQuality_H(quality_id)
 );
 
 -- Query: Fast direct join
 SELECT p.*, ce.changed_by, dl.source_system, dq.quality_score
 FROM Party_H p
 LEFT JOIN Observability.ChangeEvent_H ce 
-    ON ce.change_event_key = p.change_event_key
+    ON ce.change_event_id = p.change_event_id
 LEFT JOIN Observability.DataLineage_H dl 
-    ON dl.lineage_key = p.lineage_key
+    ON dl.lineage_id = p.lineage_id
 LEFT JOIN Observability.DataQuality_H dq 
-    ON dq.quality_key = p.quality_key
-WHERE p.is_current_version = 1;
+    ON dq.quality_id = p.quality_id
+WHERE p.is_current = 1;
 ```
 
 **Overhead**: 3 BIGINT columns (24 bytes) vs 15+ columns (500+ bytes)
 
-#### Approach 2: Join by entity_key (No FK Required)
+#### Approach 2: Join by entity_id (No FK Required)
 
-**Domain table has NO FK, join on entity_key + entity_type:**
+**Domain table has NO FK, join on entity_id + entity_type:**
 
 ```sql
 CREATE TABLE Party_H (
-    party_key BIGINT NOT NULL,
+    party_id BIGINT NOT NULL,
     -- ... core columns only (8 columns) ...
 );
 
@@ -687,20 +687,20 @@ CREATE TABLE Party_H (
 SELECT p.*, ce.changed_by, dl.source_system, dq.quality_score
 FROM Party_H p
 LEFT JOIN (
-    SELECT entity_key, changed_by, changed_dts,
-           ROW_NUMBER() OVER (PARTITION BY entity_key ORDER BY changed_dts DESC) AS rn
+    SELECT entity_id, changed_by, changed_dts,
+           ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY changed_dts DESC) AS rn
     FROM Observability.ChangeEvent_H
     WHERE entity_type = 'PARTY'
-) ce ON ce.entity_key = p.party_key AND ce.rn = 1
+) ce ON ce.entity_id = p.party_id AND ce.rn = 1
 LEFT JOIN Observability.DataLineage_H dl
-    ON dl.entity_type = 'PARTY' AND dl.entity_key = p.party_key
+    ON dl.entity_type = 'PARTY' AND dl.entity_id = p.party_id
 LEFT JOIN (
-    SELECT entity_key, quality_score, evaluated_dts,
-           ROW_NUMBER() OVER (PARTITION BY entity_key ORDER BY evaluated_dts DESC) AS rn
+    SELECT entity_id, quality_score, evaluated_dts,
+           ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY evaluated_dts DESC) AS rn
     FROM Observability.DataQuality_H
     WHERE entity_type = 'PARTY'
-) dq ON dq.entity_key = p.party_key AND dq.rn = 1
-WHERE p.is_current_version = 1;
+) dq ON dq.entity_id = p.party_id AND dq.rn = 1
+WHERE p.is_current = 1;
 ```
 
 **Overhead**: 0 additional columns, join on indexed columns
@@ -711,7 +711,7 @@ WHERE p.is_current_version = 1;
 -- Create view to simplify agent queries
 CREATE VIEW Party_Complete AS
 SELECT 
-    p.party_key, p.party_id, p.legal_name,
+    p.party_id, p.party_key, p.legal_name,
     p.valid_from_dts, p.valid_to_dts,
     ce.changed_by AS last_changed_by,
     ce.changed_dts AS last_changed_dts,
@@ -722,22 +722,22 @@ SELECT
     dq.evaluated_dts AS quality_evaluated_dts
 FROM Party_H p
 LEFT JOIN Observability.ChangeEvent_H ce 
-    ON ce.change_event_key = p.change_event_key  -- If using FK approach
+    ON ce.change_event_id = p.change_event_id  -- If using FK approach
 LEFT JOIN Observability.DataLineage_H dl 
-    ON dl.lineage_key = p.lineage_key
+    ON dl.lineage_id = p.lineage_id
 LEFT JOIN Observability.DataQuality_H dq 
-    ON dq.quality_key = p.quality_key
-WHERE p.is_current_version = 1;
+    ON dq.quality_id = p.quality_id
+WHERE p.is_current = 1;
 
 -- Agent query (simple)
-SELECT * FROM Party_Complete WHERE party_id = 'CUST-12345';
+SELECT * FROM Party_Complete WHERE party_key = 'CUST-12345';
 ```
 
 ### 6.5 Advocated Approach by Scenario
 
 | Scenario | Recommended Approach |
 |----------|---------------------|
-| **High-volume tables (>100M rows)** | No FK, join by entity_key, use views |
+| **High-volume tables (>100M rows)** | No FK, join by entity_id, use views |
 | **Medium-volume (10M-100M)** | FK references for performance |
 | **Low-volume (<10M)** | Either approach acceptable |
 | **Agent-heavy workload** | Pre-joined views essential |
@@ -813,7 +813,7 @@ WHERE valid_from_dts >= TIMESTAMP '2024-01-01 00:00:00-05:00'  -- EST
   AND valid_from_dts < TIMESTAMP '2024-02-01 00:00:00-05:00';
 
 -- Convert to different timezone for display
-SELECT party_id,
+SELECT party_key,
        valid_from_dts AT TIME ZONE 'America/New_York' AS valid_from_est,
        valid_from_dts AT TIME ZONE 'Europe/London' AS valid_from_gmt
 FROM Party_H;
@@ -864,9 +864,9 @@ CREATE TABLE Party_H (
 );
 
 -- Agent query
-SELECT party_id, legal_name, data_quality_score
+SELECT party_key, legal_name, data_quality_score
 FROM Party_H
-WHERE is_current_version = 1
+WHERE is_current = 1
   AND data_quality_score >= 0.75;  -- High quality only
 ```
 
@@ -878,7 +878,7 @@ WHERE is_current_version = 1
 ```sql
 -- Store quality time-series in Observability
 INSERT INTO Observability.DataQuality_H (
-    entity_type, entity_key, evaluated_dts, quality_score,
+    entity_type, entity_id, evaluated_dts, quality_score,
     rule_results_json
 ) VALUES (
     'PARTY', 1001, CURRENT_TIMESTAMP(6), 0.80,
@@ -891,15 +891,15 @@ INSERT INTO Observability.DataQuality_H (
 );
 
 -- Agent query with quality filter
-SELECT p.party_id, p.legal_name, dq.quality_score
+SELECT p.party_key, p.legal_name, dq.quality_score
 FROM Party_H p
 INNER JOIN (
-    SELECT entity_key, quality_score,
-           ROW_NUMBER() OVER (PARTITION BY entity_key ORDER BY evaluated_dts DESC) AS rn
+    SELECT entity_id, quality_score,
+           ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY evaluated_dts DESC) AS rn
     FROM Observability.DataQuality_H
     WHERE entity_type = 'PARTY'
-) dq ON dq.entity_key = p.party_key AND dq.rn = 1
-WHERE p.is_current_version = 1
+) dq ON dq.entity_id = p.party_id AND dq.rn = 1
+WHERE p.is_current = 1
   AND dq.quality_score >= 0.75;
 ```
 
@@ -910,22 +910,22 @@ WHERE p.is_current_version = 1
 
 ```sql
 CREATE VIEW Party_HighQuality AS
-SELECT p.party_key, p.party_id, p.legal_name,
+SELECT p.party_id, p.party_key, p.legal_name,
        dq.quality_score, dq.evaluated_dts,
        dq.rule_results_json
 FROM Party_H p
 INNER JOIN (
-    SELECT entity_key, quality_score, evaluated_dts, rule_results_json,
-           ROW_NUMBER() OVER (PARTITION BY entity_key ORDER BY evaluated_dts DESC) AS rn
+    SELECT entity_id, quality_score, evaluated_dts, rule_results_json,
+           ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY evaluated_dts DESC) AS rn
     FROM Observability.DataQuality_H
     WHERE entity_type = 'PARTY'
-) dq ON dq.entity_key = p.party_key AND dq.rn = 1
-WHERE p.is_current_version = 1
+) dq ON dq.entity_id = p.party_id AND dq.rn = 1
+WHERE p.is_current = 1
   AND p.is_deleted = 0
   AND dq.quality_score >= 0.75;
 
 -- Agent query (simple)
-SELECT * FROM Party_HighQuality WHERE party_id = 'CUST-12345';
+SELECT * FROM Party_HighQuality WHERE party_key = 'CUST-12345';
 ```
 
 ### 8.5 Quality Rule Framework
@@ -957,9 +957,9 @@ SELECT * FROM Party_HighQuality WHERE party_id = 'CUST-12345';
 
 ```sql
 CREATE TABLE Observability.ChangeEvent_H (
-    change_event_key    BIGINT NOT NULL,
+    change_event_id    BIGINT NOT NULL,
     entity_type         VARCHAR(50) NOT NULL,
-    entity_key          BIGINT NOT NULL,
+    entity_id          BIGINT NOT NULL,
     change_type         VARCHAR(20) NOT NULL,  -- 'INSERT', 'UPDATE', 'DELETE'
     
     -- Who and when
@@ -979,7 +979,7 @@ CREATE TABLE Observability.ChangeEvent_H (
     application_name    VARCHAR(100),
     ip_address          VARCHAR(50),
     
-    PRIMARY INDEX (entity_key, changed_dts)
+    PRIMARY INDEX (entity_id, changed_dts)
 )
 PARTITION BY RANGE_N(
     changed_dts BETWEEN DATE '2020-01-01' AND DATE '2030-12-31' 
@@ -992,7 +992,7 @@ PARTITION BY RANGE_N(
 ```sql
 -- Example: Capture UPDATE event
 INSERT INTO Observability.ChangeEvent_H (
-    change_event_key, entity_type, entity_key, change_type,
+    change_event_id, entity_type, entity_id, change_type,
     changed_by, changed_dts, change_reason,
     changed_columns, old_values_json, new_values_json
 )
@@ -1023,20 +1023,20 @@ SELECT
     new_values_json
 FROM Observability.ChangeEvent_H
 WHERE entity_type = 'PARTY'
-  AND entity_key = 1001
+  AND entity_id = 1001
 ORDER BY changed_dts;
 
 -- Who deleted this record and why?
 SELECT changed_by, changed_dts, change_reason
 FROM Observability.ChangeEvent_H
 WHERE entity_type = 'PARTY'
-  AND entity_key = 1001
+  AND entity_id = 1001
   AND change_type = 'DELETE'
 ORDER BY changed_dts DESC
 LIMIT 1;
 
 -- All changes by a specific user
-SELECT entity_type, entity_key, change_type, changed_dts
+SELECT entity_type, entity_id, change_type, changed_dts
 FROM Observability.ChangeEvent_H
 WHERE changed_by = 'data_steward@company.com'
   AND changed_dts >= CURRENT_DATE - 30
@@ -1091,7 +1091,7 @@ START: What is primary access pattern?
 ├─ Single-row lookup by natural key?
 │  └─ Use natural key UPI ✅
 ├─ Range queries on time + entity?
-│  └─ Use composite (entity_key, time_column) NUPI ✅
+│  └─ Use composite (entity_id, time_column) NUPI ✅
 ├─ Frequent joins to parent entity?
 │  └─ Use parent FK for co-location NUPI ✅
 └─ Mixed patterns?
@@ -1103,40 +1103,40 @@ START: What is primary access pattern?
 ```sql
 -- Pattern 1: Surrogate key UPI (most common)
 CREATE TABLE Party_H (
-    party_key BIGINT NOT NULL,
+    party_id BIGINT NOT NULL,
     -- ... columns ...
-    PRIMARY INDEX (party_key)
+    PRIMARY INDEX (party_id)
 )
-UNIQUE PRIMARY INDEX (party_key, valid_from_dts, transaction_from_dts);
+UNIQUE PRIMARY INDEX (party_id, valid_from_dts, transaction_from_dts);
 
 -- Pattern 2: Natural key UPI (frequent business ID queries)
 CREATE TABLE Product_H (
-    product_key BIGINT NOT NULL,
-    product_id VARCHAR(50) NOT NULL,
+    product_id BIGINT NOT NULL,
+    product_key VARCHAR(50) NOT NULL,
     -- ... columns ...
-    PRIMARY INDEX (product_id)  -- If most queries filter on product_id
+    PRIMARY INDEX (product_key)  -- If most queries filter on product_key
 )
-UNIQUE PRIMARY INDEX (product_key, valid_from_dts, transaction_from_dts);
+UNIQUE PRIMARY INDEX (product_id, valid_from_dts, transaction_from_dts);
 
 -- Pattern 3: Composite NUPI (relationship table, co-located)
 CREATE TABLE PartyProduct_H (
-    party_product_key BIGINT NOT NULL,
-    party_key BIGINT NOT NULL,
-    product_key BIGINT NOT NULL,
+    party_product_id BIGINT NOT NULL,
+    party_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
     -- ... columns ...
-    PRIMARY INDEX (party_key, product_key)  -- Co-locate with Party
+    PRIMARY INDEX (party_id, product_id)  -- Co-locate with Party
 )
-UNIQUE PRIMARY INDEX (party_product_key, valid_from_dts, transaction_from_dts);
+UNIQUE PRIMARY INDEX (party_product_id, valid_from_dts, transaction_from_dts);
 
 -- Pattern 4: Time-based composite (time-series data)
 CREATE TABLE Transaction_H (
-    transaction_key BIGINT NOT NULL,
-    party_key BIGINT NOT NULL,
+    transaction_id BIGINT NOT NULL,
+    party_id BIGINT NOT NULL,
     transaction_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     -- ... columns ...
-    PRIMARY INDEX (party_key, transaction_dts)  -- Time-series queries
+    PRIMARY INDEX (party_id, transaction_dts)  -- Time-series queries
 )
-UNIQUE PRIMARY INDEX (transaction_key, valid_from_dts, transaction_from_dts)
+UNIQUE PRIMARY INDEX (transaction_id, valid_from_dts, transaction_from_dts)
 PARTITION BY RANGE_N(
     transaction_dts BETWEEN DATE '2020-01-01' AND DATE '2030-12-31' 
     EACH INTERVAL '1' MONTH
@@ -1230,12 +1230,12 @@ START: Table size?
 ```sql
 -- Pattern 1: Natural key index (when PI is surrogate key)
 CREATE UNIQUE INDEX idx_party_natural_key
-ON Party_H (party_id)
+ON Party_H (party_key)
 WHERE is_current = 1 AND is_deleted = 0;
 
 -- Pattern 2: Foreign key index (for join optimization)
 CREATE INDEX idx_partyproduct_product
-ON PartyProduct_H (product_key)
+ON PartyProduct_H (product_id)
 WHERE is_current = 1 AND is_deleted = 0;
 
 -- Pattern 3: Composite index (multi-column filters)
@@ -1244,8 +1244,8 @@ ON Product_H (product_category, product_type_code)
 WHERE is_current = 1 AND is_deleted = 0;
 
 -- Pattern 4: Covering index (include frequently selected columns)
-CREATE INDEX idx_party_lookup (party_id, legal_name, status_code)
-ON Party_H (party_id)
+CREATE INDEX idx_party_lookup (party_key, legal_name, status_code)
+ON Party_H (party_key)
 WHERE is_current = 1 AND is_deleted = 0;
 ```
 
@@ -1262,8 +1262,8 @@ WHERE is_current = 1 AND is_deleted = 0;
 -- Pattern 1: Current version materialized view
 CREATE JOIN INDEX jidx_party_current AS
 SELECT 
-    party_key,
     party_id,
+    party_key,
     legal_name,
     party_type_code,
     status_code
@@ -1271,40 +1271,40 @@ FROM Party_H
 WHERE is_current = 1
   AND is_deleted = 0
   AND transaction_to_dts = TIMESTAMP '9999-12-31 23:59:59.999999+00:00'
-PRIMARY INDEX (party_key);
+PRIMARY INDEX (party_id);
 
 -- Pattern 2: Denormalized join (frequent join pattern)
 CREATE JOIN INDEX jidx_party_product_denorm AS
 SELECT 
-    p.party_key,
     p.party_id,
+    p.party_key,
     p.legal_name,
-    pp.product_key,
-    pr.product_id,
+    pp.product_id,
+    pr.product_key,
     pr.product_name
 FROM Party_H p
 INNER JOIN PartyProduct_H pp 
-    ON p.party_key = pp.party_key
+    ON p.party_id = pp.party_id
 INNER JOIN Product_H pr 
-    ON pp.product_key = pr.product_key
+    ON pp.product_id = pr.product_id
 WHERE p.is_current = 1 AND p.is_deleted = 0
   AND pp.is_current = 1 AND pp.is_deleted = 0
   AND pr.is_current = 1 AND pr.is_deleted = 0
-PRIMARY INDEX (party_key);
+PRIMARY INDEX (party_id);
 
 -- Pattern 3: Pre-computed aggregation
 CREATE JOIN INDEX jidx_party_metrics AS
 SELECT 
-    party_key,
+    party_id,
     COUNT(*) AS product_cnt,
     SUM(balance_amt) AS total_balance_amt,
     MAX(last_transaction_dts) AS last_activity_dts
 FROM Party_H p
-INNER JOIN PartyProduct_H pp ON p.party_key = pp.party_key
+INNER JOIN PartyProduct_H pp ON p.party_id = pp.party_id
 WHERE p.is_current = 1 AND p.is_deleted = 0
   AND pp.is_current = 1 AND pp.is_deleted = 0
-GROUP BY party_key
-PRIMARY INDEX (party_key);
+GROUP BY party_id
+PRIMARY INDEX (party_id);
 ```
 
 ### 10.6 Compression Strategy
@@ -1327,7 +1327,7 @@ PRIMARY INDEX (party_key);
 ```sql
 -- Pattern 1: AUTO COMPRESS (recommended)
 CREATE TABLE Party_H (
-    party_key BIGINT NOT NULL,
+    party_id BIGINT NOT NULL,
     -- ... other columns ...
     notes_txt VARCHAR(5000),
     address_text VARCHAR(500)
@@ -1338,7 +1338,7 @@ WITH COLUMN_PARTITION = (
 
 -- Pattern 2: Specific algorithm for very large text
 CREATE TABLE Document_H (
-    document_key BIGINT NOT NULL,
+    document_id BIGINT NOT NULL,
     document_content CLOB
 )
 WITH COLUMN_PARTITION = (
@@ -1355,8 +1355,8 @@ WITH COLUMN_PARTITION = (
 ```sql
 -- Collect stats on critical columns
 COLLECT STATISTICS 
-COLUMN (party_key),
 COLUMN (party_id),
+COLUMN (party_key),
 COLUMN (party_type_code),
 COLUMN (is_current),
 COLUMN (is_deleted),
@@ -1423,16 +1423,16 @@ START: What is table volume?
 └─ > 100M rows → Core Only + Views ✅ (Advocated)
     │
     ├─ Need fast audit access?
-    │  ├─ YES → Add change_event_key FK
-    │  └─ NO → Join by entity_key (no FK)
+    │  ├─ YES → Add change_event_id FK
+    │  └─ NO → Join by entity_id (no FK)
     │
     ├─ Need fast lineage access?
-    │  ├─ YES → Add lineage_key FK
-    │  └─ NO → Join by entity_key (no FK)
+    │  ├─ YES → Add lineage_id FK
+    │  └─ NO → Join by entity_id (no FK)
     │
     └─ Need fast quality access?
-       ├─ YES → Add quality_key FK
-       └─ NO → Join by entity_key (no FK)
+       ├─ YES → Add quality_id FK
+       └─ NO → Join by entity_id (no FK)
 ```
 
 ### 10.3 Delete Strategy Decision
@@ -1467,6 +1467,9 @@ START: What is table volume?
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.3 | 2026-03-20 | Completed swap of id and key to be consistent throughout design standards | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.2 | 2026-03-18 | Renamed is_current_version → is_current throughout, aligned with Domain Module Design Standard naming convention | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
+| 1.1 | 2026-03-17 | Updated naming convention throughout: {entity}_id = Surrogate Key (BIGINT), {entity}_key = Natural Business Key (VARCHAR), aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.0 | 2025-02-09 | Initial Advocated Data Management Standards | Data Architecture |
 
 ---

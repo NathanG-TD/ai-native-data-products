@@ -8,9 +8,9 @@
 ```sql
 CREATE TABLE {EntityName}_H (
     -- Identity (Required)
-    {entity}_key        BIGINT NOT NULL
+    {entity}_id         BIGINT NOT NULL
         COMMENT 'Surrogate key - system-assigned, never reused, used for all module joins',
-    {entity}_id         VARCHAR(50) NOT NULL
+    {entity}_key        VARCHAR(50) NOT NULL
         COMMENT 'Natural/business key from source system - used in user queries and external references',
 
     -- Bi-Temporal (Advocated - see implementation-guidance.md for alternatives)
@@ -46,7 +46,7 @@ CREATE TABLE {EntityName}_H (
     batch_id            BIGINT
         COMMENT 'ETL/ELT batch identifier for load traceability'
 )
-PRIMARY INDEX ({entity}_key);   -- NUPI: allows multiple versions of same key
+PRIMARY INDEX ({entity}_id);   -- NUPI: allows multiple versions of same key
 
 -- Table comment (Required)
 COMMENT ON TABLE {EntityName}_H IS
@@ -55,7 +55,7 @@ COMMENT ON TABLE {EntityName}_H IS
 
 -- UNIQUE INDEX for natural key lookup on current records
 CREATE UNIQUE INDEX idx_{entity}_natural_key_current
-ON {EntityName}_H ({entity}_id)
+ON {EntityName}_H ({entity}_key)
 WHERE is_current = 1 AND is_deleted = 0;
 ```
 
@@ -65,7 +65,7 @@ WHERE is_current = 1 AND is_deleted = 0;
 
 ```sql
 CREATE TABLE {ReferenceName}_R (
-    {reference}_key     BIGINT NOT NULL
+    {reference}_id      BIGINT NOT NULL
         COMMENT 'Surrogate key for reference data entry',
     {reference}_code    VARCHAR(20) NOT NULL
         COMMENT 'Reference code - short identifier used in domain tables, unique within effective period',
@@ -83,7 +83,7 @@ CREATE TABLE {ReferenceName}_R (
         COMMENT 'Current validity: 1 = currently valid, 0 = expired or not yet effective',
 
     -- Optional hierarchy
-    parent_{reference}_key BIGINT
+    parent_{reference}_id BIGINT
         COMMENT 'Parent reference key for hierarchical taxonomies - NULL for top-level values',
     sort_order          INTEGER
         COMMENT 'Display sequence for ordering in UI or reports'
@@ -102,12 +102,12 @@ COMMENT ON TABLE {ReferenceName}_R IS
 
 ```sql
 CREATE TABLE {Entity1}{Entity2}_H (
-    {entity1}_{entity2}_key BIGINT NOT NULL
+    {entity1}_{entity2}_id  BIGINT NOT NULL
         COMMENT 'Surrogate key for this relationship instance',
-    {entity1}_key       BIGINT NOT NULL
-        COMMENT 'FK to {Entity1}_H.{entity1}_key - identifies the first entity in relationship',
-    {entity2}_key       BIGINT NOT NULL
-        COMMENT 'FK to {Entity2}_H.{entity2}_key - identifies the second entity in relationship',
+    {entity1}_id        BIGINT NOT NULL
+        COMMENT 'FK to {Entity1}_H.{entity1}_id - identifies the first entity in relationship',
+    {entity2}_id        BIGINT NOT NULL
+        COMMENT 'FK to {Entity2}_H.{entity2}_id - identifies the second entity in relationship',
 
     -- Same temporal pattern as entity tables (consistency for agent pattern learning)
     valid_from_dts      TIMESTAMP(6) WITH TIME ZONE NOT NULL
@@ -129,12 +129,12 @@ CREATE TABLE {Entity1}{Entity2}_H (
     -- role_type_code    VARCHAR(20)    -- Contextual type of relationship
     -- effective_pct     DECIMAL(5,2)   -- Relationship weight or percentage (if applicable)
 
-    PRIMARY INDEX ({entity1}_key)  -- Co-locate with first entity for join efficiency
+    PRIMARY INDEX ({entity1}_id)  -- Co-locate with first entity for join efficiency
 );
 
 COMMENT ON TABLE {Entity1}{Entity2}_H IS
 '{Entity1} to {Entity2} association history - many-to-many relationship with temporal tracking.
- Current active: is_current = 1 AND is_deleted = 0. Primary join key: {entity1}_key.';
+ Current active: is_current = 1 AND is_deleted = 0. Primary join key: {entity1}_id.';
 ```
 
 ---
@@ -145,7 +145,7 @@ COMMENT ON TABLE {Entity1}{Entity2}_H IS
 
 ```sql
 CREATE VIEW {Entity}_Current AS
-SELECT {entity}_key, {entity}_id,
+SELECT {entity}_id, {entity}_key,
        -- [Include all business-relevant columns; exclude internal temporal columns]
        valid_from_dts, transaction_from_dts,
        source_system_id
@@ -154,7 +154,7 @@ WHERE is_current = 1 AND is_deleted = 0;
 
 COMMENT ON VIEW {Entity}_Current IS
 'Current active {entity} records - filters is_current=1 AND is_deleted=0.
- Use this view as default access pattern; join to other modules via {entity}_key.';
+ Use this view as default access pattern; join to other modules via {entity}_id.';
 ```
 
 ### `{Entity}_Enriched` (Optional — for frequent join patterns)
@@ -185,7 +185,7 @@ SELECT *,
          ELSE 'HISTORICAL'
     END AS record_status
 FROM {Entity}_H
-ORDER BY {entity}_key, valid_from_dts, transaction_from_dts;
+ORDER BY {entity}_id, valid_from_dts, transaction_from_dts;
 
 COMMENT ON VIEW {Entity}_AuditTrail IS
 'Complete version history for {entity} including all superseded and deleted records.
@@ -200,8 +200,8 @@ COMMENT ON VIEW {Entity}_AuditTrail IS
 
 ```sql
 CREATE TABLE {Module}.{Table} (
-    {table}_key         BIGINT NOT NULL,
-    entity_key          BIGINT NOT NULL
+    {table}_id          BIGINT NOT NULL,
+    entity_id           BIGINT NOT NULL
         COMMENT 'FK to Domain entity identified by entity_type',
     entity_type         VARCHAR(50) NOT NULL
         COMMENT 'Domain entity type: PARTY, PRODUCT, AGREEMENT, etc.',
@@ -209,10 +209,10 @@ CREATE TABLE {Module}.{Table} (
 );
 
 -- Join:
-SELECT t.*, p.party_id, p.legal_name
+SELECT t.*, p.party_key, p.legal_name
 FROM {Module}.{Table} t
 INNER JOIN Domain.Party_H p
-    ON p.party_key = t.entity_key AND t.entity_type = 'PARTY'
+    ON p.party_id = t.entity_id AND t.entity_type = 'PARTY'
 WHERE p.is_current = 1 AND p.is_deleted = 0;
 ```
 
@@ -220,11 +220,11 @@ WHERE p.is_current = 1 AND p.is_deleted = 0;
 
 ```sql
 CREATE TABLE {Module}.{Table} (
-    {table}_key         BIGINT NOT NULL,
-    party_key           BIGINT
-        COMMENT 'FK to Domain.Party_H.party_key - NULL when record is not party-related',
-    product_key         BIGINT
-        COMMENT 'FK to Domain.Product_H.product_key - NULL when record is not product-related',
+    {table}_id          BIGINT NOT NULL,
+    party_id            BIGINT
+        COMMENT 'FK to Domain.Party_H.party_id - NULL when record is not party-related',
+    product_id          BIGINT
+        COMMENT 'FK to Domain.Product_H.product_id - NULL when record is not product-related',
     ...
 );
 ```

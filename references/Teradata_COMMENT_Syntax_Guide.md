@@ -23,8 +23,8 @@ COMMENT ON COLUMN table_name.column_name IS 'comment text';
 
 **Example**:
 ```sql
-COMMENT ON COLUMN Party_H.party_key IS 'Surrogate key - system generated, never reused';
-COMMENT ON COLUMN Party_H.party_id IS 'Natural business identifier from source CRM system';
+COMMENT ON COLUMN Party_H.party_id IS 'Surrogate key - system generated, never reused';
+COMMENT ON COLUMN Party_H.party_key IS 'Natural business identifier from source CRM system';
 ```
 
 ### Alternative Syntax (Also Valid)
@@ -72,21 +72,21 @@ COMMENT ON COLUMN test.col2 IS 'Second column description';
 ```sql
 -- 1. CREATE TABLE statement
 CREATE TABLE Party_H (
-    party_key BIGINT NOT NULL,
-    party_id VARCHAR(50) NOT NULL,
+    party_id BIGINT NOT NULL,
+    party_key VARCHAR(50) NOT NULL,
     legal_name VARCHAR(200)
 )
-PRIMARY INDEX (party_key);
+PRIMARY INDEX (party_id);
 
 -- 2. Table comment
 COMMENT ON TABLE Party_H IS 
 'Party entity history table - customers, employees, vendors with bi-temporal tracking';
 
 -- 3. Column comments
-COMMENT ON COLUMN Party_H.party_key IS 
+COMMENT ON COLUMN Party_H.party_id IS 
 'Surrogate key - system generated unique identifier, never reused, used for all joins';
 
-COMMENT ON COLUMN Party_H.party_id IS 
+COMMENT ON COLUMN Party_H.party_key IS 
 'Natural business identifier from source CRM system, used for user queries and reports';
 
 COMMENT ON COLUMN Party_H.legal_name IS 
@@ -127,21 +127,21 @@ WHERE TableName = 'PARTY_H';
 **Example template**:
 ```sql
 CREATE TABLE {EntityName}_H (
-    {entity}_key BIGINT NOT NULL,
-    {entity}_id VARCHAR(50) NOT NULL,
+    {entity}_id BIGINT NOT NULL,
+    {entity}_key VARCHAR(50) NOT NULL,
     -- ... other columns ...
     is_current BYTEINT NOT NULL DEFAULT 1,
     is_deleted BYTEINT NOT NULL DEFAULT 0
 )
-PRIMARY INDEX ({entity}_key);
+PRIMARY INDEX ({entity}_id);
 
 COMMENT ON TABLE {EntityName}_H IS 
 '{Entity} history table with temporal tracking and soft delete support';
 
-COMMENT ON COLUMN {EntityName}_H.{entity}_key IS 
+COMMENT ON COLUMN {EntityName}_H.{entity}_id IS 
 'Surrogate key - system generated, never reused, used for all internal joins';
 
-COMMENT ON COLUMN {EntityName}_H.{entity}_id IS 
+COMMENT ON COLUMN {EntityName}_H.{entity}_key IS 
 'Natural business identifier from source system, used for user queries';
 
 COMMENT ON COLUMN {EntityName}_H.is_current IS 

@@ -170,7 +170,7 @@ WHERE module_name = 'Domain';
 -- Result: Party → Party_H, Product → Product_H
 
 -- 4. Now ready to query
-SELECT p.party_id, p.legal_name
+SELECT p.party_key, p.legal_name
 FROM Customer360_Domain.Party_H p
 WHERE p.is_current = 1;
 ```

@@ -1,7 +1,7 @@
 # AI-Native Data Product - Master Design Standard
 
-**Version:** 1.2  
-**Date:** February 9, 2025  
+**Version:** 1.3  
+**Date:** March 20, 2026  
 **Document Type:** Design Standard / Reusable Template  
 **Purpose:** Define the architectural blueprint and design standards for modular, AI-native data products optimized for agentic consumption
 
@@ -434,8 +434,8 @@ FROM Customer360_Semantic.entity_metadata
 WHERE module_name = 'Domain' AND is_active = 'Y';
 
 -- Result:
--- Party → Party_H (view: Party_Current, key: party_id)
--- Product → Product_H (view: Product_Current, key: product_id)
+-- Party → Party_H (view: Party_Current, key: party_key)
+-- Product → Product_H (view: Product_Current, key: product_key)
 
 -- Step 4: Learn how to join Party to customer features
 SELECT hop_count, path_tables, path_joins
@@ -443,13 +443,13 @@ FROM Customer360_Semantic.v_relationship_paths
 WHERE source_table = 'Party_H' AND target_table = 'customer_features'
 ORDER BY hop_count;
 
--- Result: Direct join via party_key
+-- Result: Direct join via party_id
 
 -- Step 5: Generate query
-SELECT p.party_id, p.legal_name, cf.credit_score_normalized
+SELECT p.party_key, p.legal_name, cf.credit_score_normalized
 FROM Customer360_Domain.Party_H p
 INNER JOIN Customer360_Prediction.customer_features cf
-    ON cf.party_key = p.party_key
+    ON cf.party_id = p.party_id
 WHERE p.is_current = 1 AND cf.is_current = 'Y';
 ```
 
@@ -578,13 +578,13 @@ Tables with module prefixes:
 ```sql
 -- From Prediction module to Domain module (Approach 1 - Separate DBs)
 CREATE TABLE Customer360_Prediction.customer_features (
-    party_key BIGINT NOT NULL  -- FK to Customer360_Domain.Party_H
+    party_is BIGINT NOT NULL  -- FK to Customer360_Domain.Party_H
     ...
 );
 
 -- From Prediction module to Domain module (Approach 2 - Single DB)  
 CREATE TABLE Customer360.P_customer_features (
-    party_key BIGINT NOT NULL  -- FK to Customer360.D_Party_H
+    party_id BIGINT NOT NULL  -- FK to Customer360.D_Party_H
     ...
 );
 ```
@@ -685,7 +685,7 @@ Observability ─────────→ Memory (feedback loop)
 
 **Feature Store**: A centralized repository for storing, managing, and serving ML features - ensuring consistency between training and inference.
 
-**Instance**: An actual row of data within a table. For example, Customer ID CUST-123 is an instance.
+**Instance**: An actual row of data within a table. For example, Customer Key CUST-123 is an instance.
 
 **Knowledge Graph**: A network of entities and their relationships, enabling semantic reasoning and inference.
 
@@ -712,7 +712,7 @@ Observability ─────────→ Memory (feedback loop)
 | 1.0 | 2025-11-07 | Nathan Green, Worldwide Data Architecture Team, Teradata | Initial master design standard with standards-based approach |
 | 1.1 | 2026-02-05 | Nathan Green, Worldwide Data Architecture Team, Teradata | Updated to clarify scope of modules |
 | 1.2 | 2026-02-16 | Nathan Green, Worldwide Data Architecture Team, Teradata | Updated to remain consistent with module design docs, added agent discovery section |
-
+| 1.3 | 2026-03-120 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata | Updated to remain consistent with module design docs, the key/id swap |
 ---
 
 *This is a living standard. Module Design Standards will extend these principles, and actual data product implementations will apply them. Standards evolve based on experience and feedback.*

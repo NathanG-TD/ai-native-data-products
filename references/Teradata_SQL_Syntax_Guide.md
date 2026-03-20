@@ -54,13 +54,13 @@ UNIQUE PRIMARY INDEX (column1, column2);  -- ERROR!
 ✅ **Correct:**
 ```sql
 CREATE UNIQUE INDEX idx_party_natural
-ON Party_H (party_id);
+ON Party_H (party_key);
 ```
 
 ❌ **INCORRECT:**
 ```sql
 CREATE INDEX idx_party_current
-ON Party_H (party_id)
+ON Party_H (party_key)
 WHERE is_current = 1 AND is_deleted = 0;  -- Not supported
 ```
 
@@ -72,7 +72,7 @@ SELECT * FROM Party_H
 WHERE is_current = 1 AND is_deleted = 0;
 
 -- Then index the base table normally
-CREATE INDEX idx_party_id ON Party_H (party_id);
+CREATE INDEX idx_party_key ON Party_H (party_key);
 ```
 
 ### Rule 3: Syntax Placement
@@ -102,8 +102,8 @@ PRIMARY INDEX (column) OR UNIQUE PRIMARY INDEX (...)  -- <-- After closing paren
 
 ```sql
 CREATE TABLE Party_H (
-    party_key BIGINT NOT NULL,
-    party_id VARCHAR(50) NOT NULL,
+    party_id BIGINT NOT NULL,
+    party_key VARCHAR(50) NOT NULL,
     legal_name VARCHAR(200),
     valid_from_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     valid_to_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL 
@@ -115,7 +115,7 @@ CREATE TABLE Party_H (
     is_current BYTEINT NOT NULL DEFAULT 1,
     is_deleted BYTEINT NOT NULL DEFAULT 0
 )
-UNIQUE PRIMARY INDEX (party_key, valid_from_dts, transaction_from_dts);
+UNIQUE PRIMARY INDEX (party_id, valid_from_dts, transaction_from_dts);
 ```
 
 ## Semantic Table Pattern (Tested ✅)
@@ -135,7 +135,7 @@ UNIQUE PRIMARY INDEX (entity_name, module_name);
 
 ```sql
 CREATE TABLE CountryCode_R (
-    country_key BIGINT NOT NULL,
+    country_id BIGINT NOT NULL,
     country_code VARCHAR(3) NOT NULL,
     effective_date DATE NOT NULL,
     expiration_date DATE NOT NULL DEFAULT DATE '9999-12-31',

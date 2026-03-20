@@ -129,7 +129,7 @@ Instead of three paragraphs explaining when to use wide vs tall format —
 ```
 Instead of a Customer-specific example showing party_key —
 CREATE TABLE {Schema}.{entity}_embedding (
-    {entity}_key BIGINT NOT NULL ...
+    {entity}_id BIGINT NOT NULL ...
 ```
 
 **Consolidate repeated patterns:**
@@ -182,7 +182,7 @@ WHERE is_active = 1 AND is_validated = 0
 **Temporal tables:**
 ```sql
 -- Always NUPI for tables with multiple versions per key
-PRIMARY INDEX ({entity}_key)   -- Non-unique, allows multiple versions
+PRIMARY INDEX ({entity}_id)   -- Non-unique, allows multiple versions
 
 -- Never UNIQUE PRIMARY INDEX on temporal tables
 -- Reference tables (no versioning) may use UNIQUE PRIMARY INDEX
@@ -205,7 +205,7 @@ _Enriched View: with common Domain joins
 
 **Cross-module references:**
 - VARCHAR comma-separated for table name lists: `'Domain.Party_H, Prediction.customer_features'`
-- BIGINT foreign keys for entity references: `entity_key BIGINT` or `{entity}_key BIGINT`
+- BIGINT foreign keys for entity references: `entity_id BIGINT` or `{entity}_id BIGINT`
 - Never duplicate content from another module — join back at query time
 
 ---

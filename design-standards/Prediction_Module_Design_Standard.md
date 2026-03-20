@@ -1,5 +1,5 @@
 # Prediction Module Design Standard
-## AI-Native Data Product Architecture - Version 1.0
+## AI-Native Data Product Architecture - Version 1.3
 
 ---
 
@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.1 |
+| **Version** | 1.3 |
 | **Status** | STANDARD |
-| **Last Updated** | 2025-02-27 |
+| **Last Updated** | 2026-03-18 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Prediction Module (Feature Store) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -158,10 +158,10 @@ The Prediction Module (Feature Store) stores **engineered features** for ML mode
 
 ```sql
 CREATE TABLE Prediction.customer_behavioral_features (
-    feature_group_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    feature_group_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
     -- Entity reference (references Domain)
-    entity_key BIGINT NOT NULL,
+    entity_id BIGINT NOT NULL,
     entity_type VARCHAR(50) NOT NULL,  -- 'PARTY'
     
     -- ENGINEERED feature values (normalized to 0-1 range)
@@ -192,16 +192,16 @@ CREATE TABLE Prediction.customer_behavioral_features (
     source_system VARCHAR(50),
     created_by VARCHAR(100)
 )
-PRIMARY INDEX (feature_group_key);
+PRIMARY INDEX (feature_group_id);
 
 COMMENT ON TABLE Prediction.customer_behavioral_features IS 
 'Customer behavioral features - ENGINEERED and normalized to 0-1 range for model training';
 
-COMMENT ON COLUMN Prediction.customer_behavioral_features.feature_group_key IS 
+COMMENT ON COLUMN Prediction.customer_behavioral_features.feature_group_id IS 
 'Surrogate key for feature group record - unique identifier for this feature snapshot';
 
-COMMENT ON COLUMN Prediction.customer_behavioral_features.entity_key IS 
-'Foreign key to Domain entity (party_key) - links features to customer entity';
+COMMENT ON COLUMN Prediction.customer_behavioral_features.entity_id IS 
+'Foreign key to Domain entity (party_id) - links features to customer entity';
 
 COMMENT ON COLUMN Prediction.customer_behavioral_features.entity_type IS 
 'Entity type indicator - always PARTY for customer features - enables polymorphic references';
@@ -270,10 +270,10 @@ monetary_score = total_spend_30d / MAX(total_spend_30d across all customers)
 
 ```sql
 CREATE TABLE Prediction.feature_value (
-    feature_value_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    feature_value_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
     -- Entity reference
-    entity_key BIGINT NOT NULL,
+    entity_id BIGINT NOT NULL,
     entity_type VARCHAR(50) NOT NULL,
     
     -- Feature identification
@@ -299,15 +299,15 @@ CREATE TABLE Prediction.feature_value (
     source_system VARCHAR(50),
     created_by VARCHAR(100)
 )
-PRIMARY INDEX (feature_value_key);
+PRIMARY INDEX (feature_value_id);
 
 COMMENT ON TABLE Prediction.feature_value IS 
 'Feature values - tall format with one feature per row, flexible data types for sparse or dynamic feature sets';
 
-COMMENT ON COLUMN Prediction.feature_value.feature_value_key IS 
+COMMENT ON COLUMN Prediction.feature_value.feature_value_id IS 
 'Surrogate key for feature value record';
 
-COMMENT ON COLUMN Prediction.feature_value.entity_key IS 
+COMMENT ON COLUMN Prediction.feature_value.entity_id IS 
 'Foreign key to Domain entity - links feature to specific entity instance';
 
 COMMENT ON COLUMN Prediction.feature_value.entity_type IS 
@@ -372,14 +372,14 @@ COMMENT ON COLUMN Prediction.feature_value.created_by IS
 
 ```sql
 CREATE TABLE Prediction.model_prediction (
-    prediction_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    prediction_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
     -- Entity reference
-    entity_key BIGINT NOT NULL,
+    entity_id BIGINT NOT NULL,
     entity_type VARCHAR(50) NOT NULL,
     
     -- Model identification
-    model_id VARCHAR(100) NOT NULL,
+    model_key VARCHAR(100) NOT NULL,
     model_version VARCHAR(20) NOT NULL,
     
     -- Prediction output
@@ -400,22 +400,22 @@ CREATE TABLE Prediction.model_prediction (
     created_by VARCHAR(100),
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
-PRIMARY INDEX (prediction_key);
+PRIMARY INDEX (prediction_id);
 
 COMMENT ON TABLE Prediction.model_prediction IS 
 'Model prediction outputs with temporal tracking and confidence scores - stores ML model inference results';
 
-COMMENT ON COLUMN Prediction.model_prediction.prediction_key IS 
+COMMENT ON COLUMN Prediction.model_prediction.prediction_id IS 
 'Surrogate key for prediction record';
 
-COMMENT ON COLUMN Prediction.model_prediction.entity_key IS 
+COMMENT ON COLUMN Prediction.model_prediction.entity_id IS 
 'Foreign key to Domain entity - identifies which entity this prediction is about';
 
 COMMENT ON COLUMN Prediction.model_prediction.entity_type IS 
 'Entity type - PARTY, PRODUCT, TRANSACTION, etc. - enables polymorphic entity references';
 
-COMMENT ON COLUMN Prediction.model_prediction.model_id IS 
-'Model identifier - unique name for the ML model that generated this prediction';
+COMMENT ON COLUMN Prediction.model_prediction.model_key IS 
+'Model identifier name - unique name for the ML model that generated this prediction';
 
 COMMENT ON COLUMN Prediction.model_prediction.model_version IS 
 'Model version - tracks which version of model was used for this prediction';
@@ -476,12 +476,12 @@ Training model to predict churn in March 2024
 ```sql
 -- Get features as they existed on a specific date (point-in-time)
 SELECT 
-    f.entity_key,
+    f.entity_id,
     f.feature_name,
     f.value_numeric,
     f.observation_dts
 FROM Prediction.feature_value f
-WHERE f.entity_key = 1001
+WHERE f.entity_id = 1001
   AND f.entity_type = 'PARTY'
   AND f.observation_dts <= TIMESTAMP '2024-03-01 00:00:00+00:00'
   AND f.valid_from_dts <= TIMESTAMP '2024-03-01 00:00:00+00:00'
@@ -495,9 +495,9 @@ SELECT
     f.value_numeric
 FROM Domain.Party_H p
 INNER JOIN Prediction.feature_value f
-    ON f.entity_key = p.party_key
+    ON f.entity_id = p.party_id
    AND f.entity_type = 'PARTY'
-WHERE p.party_id = 'CUST-123'
+WHERE p.party_key = 'CUST-123'
   AND TIMESTAMP '2024-03-01 00:00:00+00:00' >= p.valid_from_dts
   AND TIMESTAMP '2024-03-01 00:00:00+00:00' < p.valid_to_dts
   AND f.observation_dts <= TIMESTAMP '2024-03-01 00:00:00+00:00'
@@ -536,19 +536,19 @@ is_current           BYTEINT NOT NULL DEFAULT 1
 ```sql
 -- Feature references Domain entity
 CREATE TABLE Prediction.customer_features (
-    feature_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    feature_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
     -- Reference to Domain entity (standard pattern)
-    entity_key BIGINT NOT NULL,      -- FK to Domain.Party_H.party_key
+    entity_id BIGINT NOT NULL,      -- FK to Domain.Party_H.party_id
     entity_type VARCHAR(50) NOT NULL, -- 'PARTY'
     
     -- Or specific FK (type-safe)
-    party_key BIGINT NOT NULL,  -- FK to Domain.Party_H.party_key
+    party_id BIGINT NOT NULL,  -- FK to Domain.Party_H.party_id
     
     -- Feature values...
     -- Temporal columns...
 )
-PRIMARY INDEX (feature_key);
+PRIMARY INDEX (feature_id);
 
 -- Query: Get customer with features
 SELECT 
@@ -559,11 +559,11 @@ SELECT
     cf.credit_score
 FROM Domain.Party_H p
 INNER JOIN Prediction.customer_features cf
-    ON cf.party_key = p.party_key
+    ON cf.party_id = p.party_id
    AND cf.is_current = 1
 WHERE p.is_current = 1
   AND p.is_deleted = 0
-  AND p.party_id = 'CUST-123';
+  AND p.party_key = 'CUST-123';
 ```
 
 ### 5.2 Integration with Semantic (Feature Definitions)
@@ -587,7 +587,7 @@ INSERT INTO Semantic.column_metadata (
 ```sql
 -- Actual feature values (in Prediction)
 INSERT INTO Prediction.customer_features (
-    party_key, age_years, observation_dts, valid_from_dts
+    party_id, age_years, observation_dts, valid_from_dts
 ) VALUES (
     1001, 45, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)
 );
@@ -604,7 +604,7 @@ INSERT INTO Prediction.customer_features (
 ```sql
 -- Feature drift/quality tracked in Observability (not Prediction)
 CREATE TABLE Observability.feature_quality (
-    quality_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    quality_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     feature_name VARCHAR(100) NOT NULL,
     feature_group VARCHAR(100),
     evaluated_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL,
@@ -613,7 +613,7 @@ CREATE TABLE Observability.feature_quality (
     quality_score DECIMAL(3,2),
     is_active CHAR(1) DEFAULT 'Y'
 )
-PRIMARY INDEX (quality_key);
+PRIMARY INDEX (quality_id);
 
 -- Observability stores metadata about features, not the features themselves
 ```
@@ -644,13 +644,13 @@ AND is_active = 'Y';
 -- Wide format
 SELECT age_years, income_amt, credit_score
 FROM Prediction.customer_features
-WHERE party_key = 1001
+WHERE party_id = 1001
   AND is_current = 1;
 
 -- Tall format
 SELECT feature_name, value_numeric
 FROM Prediction.feature_value
-WHERE entity_key = 1001
+WHERE entity_id = 1001
   AND entity_type = 'PARTY'
   AND is_current = 1;
 ```
@@ -661,7 +661,7 @@ WHERE entity_key = 1001
 -- Features as they existed on specific date
 SELECT feature_name, value_numeric, observation_dts
 FROM Prediction.feature_value
-WHERE entity_key = 1001
+WHERE entity_id = 1001
   AND entity_type = 'PARTY'
   AND observation_dts <= TIMESTAMP '2024-03-01 00:00:00+00:00'
   AND valid_from_dts <= TIMESTAMP '2024-03-01 00:00:00+00:00'
@@ -674,7 +674,7 @@ WHERE entity_key = 1001
 -- View 1: Current features only (engineered features from Prediction)
 CREATE VIEW Prediction.v_customer_features_current AS
 SELECT 
-    cf.party_key,
+    cf.party_id,
     cf.age_normalized,        -- Engineered: normalized to 0-1
     cf.income_normalized,     -- Engineered: normalized to 0-1
     cf.credit_score_normalized, -- Engineered: normalized to 0-1
@@ -692,7 +692,7 @@ COMMENT ON VIEW Prediction.v_customer_features_current IS
 CREATE VIEW Prediction.v_customer_features_enriched AS
 SELECT 
     -- Domain attributes (NOT duplicated in Prediction)
-    p.party_id,
+    p.party_key,
     p.legal_name,
     p.party_type_code,
     p.birth_date,           -- Raw value stays in Domain
@@ -708,7 +708,7 @@ SELECT
     cf.observation_dts
 FROM Prediction.v_customer_features_current cf
 INNER JOIN Domain.Party_H p
-    ON p.party_key = cf.party_key
+    ON p.party_id = cf.party_id
    AND p.is_current = 1
    AND p.is_deleted = 0;
 
@@ -719,7 +719,7 @@ COMMENT ON VIEW Prediction.v_customer_features_enriched IS
 -- For training with historical features
 CREATE VIEW Prediction.v_customer_features_pit AS
 SELECT 
-    p.party_id,
+    p.party_key,
     p.legal_name,
     cf.age_normalized,
     cf.income_normalized,
@@ -728,7 +728,7 @@ SELECT
     cf.valid_to_dts
 FROM Prediction.customer_features cf
 INNER JOIN Domain.Party_H p
-    ON p.party_key = cf.party_key
+    ON p.party_id = cf.party_id
    AND p.is_current = 1;  -- Join current party record to historical features
 
 COMMENT ON VIEW Prediction.v_customer_features_pit IS 
@@ -875,8 +875,10 @@ Prediction → Observability: Feature drift, quality monitoring
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
-| 1.0 | 2025-02-09 | Initial Prediction Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.3 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed {table}_key → {table}_id for all GENERATED ALWAYS AS IDENTITY columns | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
+| 1.2 | 2026-03-17 | Updated naming convention: {entity}_id = Surrogate Key, {entity}_key = Natural Business Key, aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2025-02-27 | Changed is_current to be consistent with Domain module | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.0 | 2025-02-09 | Initial Prediction Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
 
 ---
 

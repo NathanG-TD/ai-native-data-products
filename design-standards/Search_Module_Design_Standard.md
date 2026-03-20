@@ -1,5 +1,5 @@
 # Search Module Design Standard
-## AI-Native Data Product Architecture - Version 1.0
+## AI-Native Data Product Architecture - Version 1.3
 
 ---
 
@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.1 |
+| **Version** | 1.3 |
 | **Status** | STANDARD |
-| **Last Updated** | 2025-02-27 |
+| **Last Updated** | 2026-03-18 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Search Module (Vector Embeddings & Similarity) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -40,7 +40,7 @@ The Search Module enables **semantic search and similarity-based retrieval** usi
 | **Semantic Search** | Find by meaning, not keywords ("find things like this") |
 | **Native Vector Storage** | Teradata's VECTOR datatype for efficient embedding storage |
 | **Similarity Functions** | In-database TD_VectorDistance for parallel similarity computation |
-| **Efficient Storage** | Store vectors + keys only, join to Domain for content |
+| **Efficient Storage** | Store vectors + ids only, join to Domain for content |
 | **RAG Support** | Retrieval-augmented generation patterns |
 
 ### 1.2 Primary Purpose: Enable Similarity Search
@@ -53,18 +53,18 @@ The Search Module enables **semantic search and similarity-based retrieval** usi
 4. **Content Discovery** - Agents discover relevant data autonomously
 5. **Multi-Modal Search** - Text, images, structured data embeddings
 
-### 1.3 Critical Principle: Store Keys Only, Not Content
+### 1.3 Critical Principle: Store IDs Only, Not Content
 
 **EFFICIENT PATTERN** (advocated):
 ```
 Vector Store:                         Domain Module:
 ┌──────────────────────┐            ┌──────────────────────┐
-│ entity_key: 1001     │            │ party_key: 1001      │
-│ embedding: [0.23,... │   points   │ party_id: CUST-123   │
+│ entity_id: 1001     │            │ party_id: 1001       │
+│ embedding: [0.23,... │   points   │ party_key: CUST-123  │
 │            ...,0.89] │   ────────>│ legal_name: "John"   │
 │ (384 dimensions)     │            │ description: "..."    │
 └──────────────────────┘            │ ... all attributes    │
-   Vector + Key only                 └──────────────────────┘
+   Vector + Id only                 └──────────────────────┘
    (minimal storage)                    Actual content
 ```
 
@@ -72,7 +72,7 @@ Vector Store:                         Domain Module:
 ```
 Vector Store with duplicated content:
 ┌──────────────────────────────────────┐
-│ entity_key: 1001                     │
+│ entity_id: 1001                     │
 │ embedding: [0.23, ..., 0.89]         │
 │ legal_name: "John Doe" ❌ DUPLICATE  │
 │ description: "..." ❌ DUPLICATE       │
@@ -82,7 +82,7 @@ Vector Store with duplicated content:
 ```
 
 **Benefits of key-only storage**:
-- ✅ Minimal storage (vectors + keys only)
+- ✅ Minimal storage (vectors + ids only)
 - ✅ No data duplication (single source of truth in Domain)
 - ✅ Always current (join to Domain for latest content)
 - ✅ Efficient updates (update embedding, not content)
@@ -102,7 +102,7 @@ Vector Store with duplicated content:
    - Embedding dimensions (384, 768, 1536, etc.)
 
 2. **Entity References** 
-   - Keys pointing back to Domain entities
+   - Ids pointing back to Domain entities
    - Entity type classification
    - **NOT the actual content** (join to Domain for content)
 
@@ -146,10 +146,10 @@ Vector Store with duplicated content:
 
 ```sql
 CREATE TABLE Search.entity_embedding (
-    embedding_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    embedding_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
     -- Entity reference (KEY ONLY - no content duplication)
-    entity_key BIGINT NOT NULL,       -- FK to Domain entity
+    entity_id BIGINT NOT NULL,       -- FK to Domain entity
     entity_type VARCHAR(50) NOT NULL, -- 'PARTY', 'PRODUCT', 'DOCUMENT', etc.
     
     -- Source identification (what was embedded)
@@ -176,16 +176,16 @@ CREATE TABLE Search.entity_embedding (
     generated_by VARCHAR(100),
     computation_method VARCHAR(50)  -- 'ONNX', 'OPENAI_API', 'NVIDIA_NIM', etc.
 )
-PRIMARY INDEX (embedding_key);
+PRIMARY INDEX (embedding_id);
 
 COMMENT ON TABLE Search.entity_embedding IS 
-'Vector embeddings for entities - stores vectors and entity keys only, join to Domain for actual content to avoid duplication';
+'Vector embeddings for entities - stores vectors and entity ids only, join to Domain for actual content to avoid duplication';
 
-COMMENT ON COLUMN Search.entity_embedding.embedding_key IS 
+COMMENT ON COLUMN Search.entity_embedding.embedding_id IS 
 'Surrogate key for embedding record';
 
-COMMENT ON COLUMN Search.entity_embedding.entity_key IS 
-'Foreign key to Domain entity - references specific entity instance (party_key, product_key, etc.) - NO content duplicated';
+COMMENT ON COLUMN Search.entity_embedding.entity_id IS 
+'Foreign key to Domain entity - references specific entity instance (party_id, product_id, etc.) - NO content duplicated';
 
 COMMENT ON COLUMN Search.entity_embedding.entity_type IS 
 'Entity type indicator - PARTY, PRODUCT, DOCUMENT, etc. - identifies which Domain table this entity belongs to';
@@ -238,8 +238,8 @@ COMMENT ON COLUMN Search.entity_embedding.computation_method IS
 
 ```sql
 CREATE TABLE Search.entity_embedding_columnar (
-    embedding_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    entity_key BIGINT NOT NULL,
+    embedding_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    entity_id BIGINT NOT NULL,
     entity_type VARCHAR(50) NOT NULL,
     
     -- Embedding dimensions as separate columns (for TD_VectorDistance)
@@ -252,7 +252,7 @@ CREATE TABLE Search.entity_embedding_columnar (
     generated_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     is_current BYTEINT NOT NULL DEFAULT 1
 )
-PRIMARY INDEX (embedding_key);
+PRIMARY INDEX (embedding_id);
 
 -- TD_VectorDistance supports range notation
 -- Can reference as '[emb_0:emb_383]' in queries
@@ -268,8 +268,8 @@ PRIMARY INDEX (embedding_key);
 **❌ AVOID (data duplication)**:
 ```sql
 CREATE TABLE Search.product_embedding_BAD (
-    embedding_key INTEGER,
-    product_key BIGINT,
+    embedding_id INTEGER,
+    product_id BIGINT,
     embedding_vector VECTOR,
     -- DON'T DUPLICATE THESE:
     product_name VARCHAR(200),      -- ❌ Already in Domain.Product_H
@@ -283,8 +283,8 @@ CREATE TABLE Search.product_embedding_BAD (
 **✅ CORRECT (keys only)**:
 ```sql
 CREATE TABLE Search.product_embedding_GOOD (
-    embedding_key INTEGER,
-    product_key BIGINT,              -- Key only
+    embedding_id INTEGER,
+    product_id BIGINT,              -- ID only
     entity_type VARCHAR(50),         -- 'PRODUCT'
     source_column VARCHAR(100),      -- 'product_description'
     embedding_vector VECTOR,
@@ -296,8 +296,8 @@ CREATE TABLE Search.product_embedding_GOOD (
 
 -- Join to Domain for actual content
 SELECT 
-    e.embedding_key,
-    e.product_key,
+    e.embedding_id,
+    e.product_id,
     e.embedding_vector,
     p.product_name,        -- From Domain (not duplicated)
     p.product_description, -- From Domain (not duplicated)
@@ -305,7 +305,7 @@ SELECT
     p.price                -- From Domain (not duplicated)
 FROM Search.product_embedding_GOOD e
 INNER JOIN Domain.Product_H p 
-    ON p.product_key = e.product_key
+    ON p.product_id = e.product_id
    AND p.is_current = 1
 WHERE e.is_current = 1;
 ```
@@ -327,24 +327,24 @@ WHERE e.is_current = 1;
 ```sql
 -- Find top 10 most similar products to query product
 SELECT 
-    ref.entity_key AS similar_product_key,
-    ref.embedding_key,
+    ref.entity_id AS similar_product_id,
+    ref.embedding_id,
     dt.distance AS similarity_distance
 FROM TD_VECTORDISTANCE (
-    ON (SELECT * FROM Search.entity_embedding WHERE entity_key = 5001) 
+    ON (SELECT * FROM Search.entity_embedding WHERE entity_id = 5001) 
         AS TargetTable PARTITION BY ANY
     ON (SELECT * FROM Search.entity_embedding WHERE entity_type = 'PRODUCT' AND is_current = 1) 
         AS ReferenceTable DIMENSION
     USING
-        TargetIDColumn('entity_key')
+        TargetIDColumn('entity_id')
         TargetFeatureColumns('embedding_vector')
-        RefIDColumn('entity_key')
+        RefIDColumn('entity_id')
         RefFeatureColumns('embedding_vector')
         DistanceMeasure('cosine')
         TopK(10)
 ) AS dt
 INNER JOIN Search.entity_embedding ref 
-    ON ref.entity_key = dt.reference_id
+    ON ref.entity_id = dt.reference_id
 ORDER BY dt.distance;
 ```
 
@@ -365,7 +365,7 @@ USING
 ```sql
 -- Find similar products with full product details
 SELECT 
-    p.product_id,
+    p.product_key,
     p.product_name,
     p.product_description,
     p.price,
@@ -376,16 +376,16 @@ FROM TD_VECTORDISTANCE (
     WHERE ReferenceTable.entity_type = 'PRODUCT' 
       AND ReferenceTable.is_current = 1
     USING
-        TargetIDColumn('entity_key')
+        TargetIDColumn('entity_id')
         TargetFeatureColumns('embedding_vector')
-        RefIDColumn('entity_key')
+        RefIDColumn('entity_id')
         RefFeatureColumns('embedding_vector')
         DistanceMeasure('cosine')
         TopK(10)
 ) AS dt
 -- Join to Domain for product details (NOT stored in Search)
 INNER JOIN Domain.Product_H p
-    ON p.product_key = dt.reference_id
+    ON p.product_id = dt.reference_id
    AND p.is_current = 1
    AND p.is_deleted = 0
 ORDER BY dt.distance;
@@ -463,10 +463,10 @@ vs.create(
 
 ```sql
 CREATE TABLE Search.party_embedding (
-    embedding_key INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
+    embedding_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
-    -- Reference to Domain entity (KEY ONLY)
-    party_key BIGINT NOT NULL,  -- FK to Domain.Party_H
+    -- Reference to Domain entity (ID ONLY)
+    party_id BIGINT NOT NULL,  -- FK to Domain.Party_H
     
     -- What was embedded (metadata, not content)
     embedded_column VARCHAR(100),  -- 'description', 'notes', 'combined_text'
@@ -480,18 +480,18 @@ CREATE TABLE Search.party_embedding (
     generated_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     is_current BYTEINT NOT NULL DEFAULT 1
 )
-PRIMARY INDEX (embedding_key);
+PRIMARY INDEX (embedding_id);
 
 -- Query with Domain content (JOIN, no duplication)
 SELECT 
-    p.party_id,
+    p.party_key,
     p.legal_name,
     p.description,      -- From Domain, NOT duplicated in Search
     e.embedding_model,
     e.generated_dts
 FROM Search.party_embedding e
 INNER JOIN Domain.Party_H p
-    ON p.party_key = e.party_key
+    ON p.party_id = e.party_id
    AND p.is_current = 1
    AND p.is_deleted = 0
 WHERE e.is_current = 1
@@ -513,7 +513,7 @@ INSERT INTO Semantic.column_metadata (
 
 -- Search module stores actual embeddings (instance data)
 INSERT INTO Search.party_embedding (
-    party_key, embedded_column, embedding_vector, 
+    party_id, embedded_column, embedding_vector, 
     embedding_dimensions, embedding_model
 ) VALUES (
     1001, 'description', [0.234, 0.567, ..., 0.891]::VECTOR,
@@ -528,8 +528,8 @@ INSERT INTO Search.party_embedding (
 CREATE VIEW Search.v_party_searchable AS
 SELECT 
     -- Entity identification
-    p.party_key,
     p.party_id,
+    p.party_key,
     
     -- Content from Domain (NOT duplicated in Search)
     p.legal_name,
@@ -543,7 +543,7 @@ SELECT
     e.generated_dts
 FROM Domain.Party_H p
 INNER JOIN Search.party_embedding e
-    ON e.party_key = p.party_key
+    ON e.party_id = p.party_id
    AND e.is_current = 1
 WHERE p.is_current = 1
   AND p.is_deleted = 0;
@@ -553,7 +553,7 @@ COMMENT ON VIEW Search.v_party_searchable IS
 
 -- Agent queries view for complete context
 SELECT * FROM Search.v_party_searchable
-WHERE party_id = 'CUST-123';
+WHERE party_key = 'CUST-123';
 ```
 
 ---
@@ -590,14 +590,14 @@ GROUP BY embedding_model, embedding_dimensions;
 WITH query_vector AS (
     SELECT embedding_vector
     FROM Search.entity_embedding
-    WHERE entity_key = (
-        SELECT party_key FROM Domain.Party_H WHERE party_id = 'CUST-123'
+    WHERE entity_id = (
+        SELECT party_id FROM Domain.Party_H WHERE party_key = 'CUST-123'
     )
     AND entity_type = 'PARTY'
     AND is_current = 1
 )
 SELECT 
-    p.party_id,
+    p.party_key,
     p.legal_name,
     p.description,          -- From Domain
     dt.distance AS similarity_score
@@ -607,13 +607,13 @@ FROM TD_VECTORDISTANCE (
         AS ReferenceTable DIMENSION
     USING
         TargetFeatureColumns('embedding_vector')
-        RefIDColumn('entity_key')
+        RefIDColumn('entity_id')
         RefFeatureColumns('embedding_vector')
         DistanceMeasure('cosine')
         TopK(10)
 ) AS dt
 INNER JOIN Domain.Party_H p
-    ON p.party_key = dt.reference_id
+    ON p.party_id = dt.reference_id
    AND p.is_current = 1
 ORDER BY dt.distance;
 ```
@@ -639,13 +639,13 @@ FROM TD_VECTORDISTANCE (
     ON (SELECT * FROM Search.document_embedding WHERE is_current = 1) 
         AS ReferenceTable DIMENSION
     USING
-        RefIDColumn('entity_key')
+        RefIDColumn('entity_id')
         RefFeatureColumns('embedding_vector')
         DistanceMeasure('cosine')
         TopK(5)  -- Top 5 most relevant documents
 ) AS dt
 INNER JOIN Domain.Document_H d
-    ON d.document_key = dt.reference_id
+    ON d.document_id = dt.reference_id
    AND d.is_current = 1
 ORDER BY dt.distance
 QUALIFY ROW_NUMBER() OVER (ORDER BY dt.distance) <= 5;
@@ -694,7 +694,7 @@ QUALIFY ROW_NUMBER() OVER (ORDER BY dt.distance) <= 5;
 - [ ] Embedding model selected
 - [ ] Vector dimensions determined
 - [ ] Storage pattern chosen (VECTOR vs columnar)
-- [ ] **NO content duplication** (keys only verified)
+- [ ] **NO content duplication** (IDs only verified)
 - [ ] Standard views created (v_{entity}_searchable)
 - [ ] Similarity search tested with TD_VectorDistance
 - [ ] Integration with Domain tested (joins for content)
@@ -706,7 +706,7 @@ QUALIFY ROW_NUMBER() OVER (ORDER BY dt.distance) <= 5;
 
 **A good Search Module should:**
 
-- ✅ Store vectors + keys only (no content duplication)
+- ✅ Store vectors + IDs only (no content duplication)
 - ✅ Use Teradata native VECTOR datatype
 - ✅ Join to Domain for actual content
 - ✅ Use TD_VectorDistance for similarity search
@@ -722,7 +722,7 @@ QUALIFY ROW_NUMBER() OVER (ORDER BY dt.distance) <= 5;
 ### Core Principles
 
 ```
-✅ Store vectors + keys only (NO content duplication)
+✅ Store vectors + IDs only (NO content duplication)
 ✅ Use Teradata native VECTOR datatype
 ✅ Join to Domain for entity attributes/content
 ✅ Use TD_VectorDistance for similarity search
@@ -735,8 +735,8 @@ QUALIFY ROW_NUMBER() OVER (ORDER BY dt.distance) <= 5;
 
 ```sql
 CREATE TABLE Search.entity_embedding (
-    embedding_key INTEGER GENERATED ALWAYS AS IDENTITY,
-    entity_key BIGINT NOT NULL,           -- Key to Domain entity
+    embedding_id INTEGER GENERATED ALWAYS AS IDENTITY,
+    entity_id BIGINT NOT NULL,           -- ID to Domain entity
     entity_type VARCHAR(50) NOT NULL,
     embedding_vector VECTOR,              -- Native Teradata VECTOR
     embedding_dimensions INTEGER,
@@ -744,7 +744,7 @@ CREATE TABLE Search.entity_embedding (
     generated_dts TIMESTAMP(6) WITH TIME ZONE,
     is_current BYTEINT NOT NULL DEFAULT 1
 )
-PRIMARY INDEX (embedding_key);
+PRIMARY INDEX (embedding_id);
 ```
 
 ### Standard Views
@@ -789,8 +789,10 @@ Python APIs: teradatagenai, langchain-teradata, teradataml
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
-| 1.0 | 2025-02-11 | Initial Search Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.3 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed embedding_key → embedding_id for all GENERATED ALWAYS AS IDENTITY columns | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
+| 1.2 | 2026-03-17 | Updated naming convention: {entity}_id = Surrogate Key, {entity}_key = Natural Business Key, aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2025-02-27 | Changed is_current to be consistent with Domain module | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.0 | 2025-02-11 | Initial Search Module Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
 ---
 
 **End of Search Module Design Standard**

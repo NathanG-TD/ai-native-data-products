@@ -54,7 +54,7 @@ Use the decision tables below; document choices before writing DDL.
 |-------------|----------------|
 | < 10M rows | Core + Extended optional |
 | 10M–100M rows | Core + FK refs to Observability |
-| > 100M rows | Core only; join Observability by entity_key |
+| > 100M rows | Core only; join Observability by entity_id |
 
 **Key Strategy**: Surrogate key + Natural key (both required). See `references/implementation-guidance.md` for sequence strategy.
 
@@ -72,12 +72,12 @@ For each entity, produce:
 - `COMMENT ON TABLE` — business purpose, not technical description
 - `COMMENT ON COLUMN` for every column — meaning, context, constraints
 - Consistent patterns across ALL entities (agents learn by pattern, not by exception)
-- Descriptive foreign keys: `party_key`, not `fk1`
+- Descriptive foreign keys: `party_id`, not `fk1`
 
 ### Step 4 — Cross-Module Integration
 Decide FK pattern for other modules referencing Domain:
-- **Pattern A** (flexible): `entity_key BIGINT + entity_type VARCHAR(50)` — use when module references many entity types
-- **Pattern B** (type-safe): explicit `party_key`, `product_key` columns — use when module references few known types
+- **Pattern A** (flexible): `entity_id BIGINT + entity_type VARCHAR(50)` — use when module references many entity types
+- **Pattern B** (type-safe): explicit `party_id`, `product_id` columns — use when module references few known types
 
 All modules JOIN back to Domain; they never duplicate Domain attributes.
 
@@ -149,8 +149,8 @@ Read these when needed — don't load all at once:
 
 **Column patterns (apply consistently across ALL entities):**
 ```
-{entity}_key         -- BIGINT surrogate key (FK references use this)
-{entity}_id          -- VARCHAR natural/business key
+{entity}_id          -- BIGINT surrogate key (FK references use this)
+{entity}_key         -- VARCHAR natural/business key
 is_current           -- BYTEINT 1/0 current version flag
 is_deleted           -- BYTEINT 1/0 soft delete flag
 valid_from_dts       -- TIMESTAMP(6) WITH TIME ZONE (bi-temporal: real-world validity)
@@ -166,7 +166,7 @@ transaction_to_dts   -- TIMESTAMP(6) WITH TIME ZONE
 WHERE is_current = 1 AND is_deleted = 0
 
 -- Via view (preferred for agents)
-SELECT * FROM {Entity}_Current WHERE {entity}_id = 'ID'
+SELECT * FROM {Entity}_Current WHERE {entity}_key = 'ID'
 ```
 
 ---
