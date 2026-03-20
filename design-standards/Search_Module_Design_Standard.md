@@ -1,5 +1,5 @@
 # Search Module Design Standard
-## AI-Native Data Product Architecture - Version 1.3
+## AI-Native Data Product Architecture - Version 1.5
 
 ---
 
@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.3 |
+| **Version** | 1.5 |
 | **Status** | STANDARD |
-| **Last Updated** | 2026-03-18 |
+| **Last Updated** | 2026-03-20 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Search Module (Vector Embeddings & Similarity) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -701,6 +701,11 @@ QUALIFY ROW_NUMBER() OVER (ORDER BY dt.distance) <= 5;
 - [ ] Indexing strategy chosen (KMEANS, HNSW, exact)
 - [ ] Update/refresh strategy defined
 - [ ] Teradata version verified (20.00.26.XX+ for VECTOR)
+- [ ] Module_Registry INSERT generated for this module
+- [ ] Min. 3 Design_Decision INSERTs generated
+- [ ] Change_Log initial release entry generated
+- [ ] Min. 3 Business_Glossary terms captured
+- [ ] Min. 1 Query_Cookbook recipe captured
 
 ### 7.4 Quality Criteria
 
@@ -714,6 +719,39 @@ QUALIFY ROW_NUMBER() OVER (ORDER BY dt.distance) <= 5;
 - ✅ Support point-in-time embedding history
 - ✅ Enable efficient similarity queries
 - ✅ Integrate with RAG patterns
+- ✅ Register itself in Memory.Module_Registry
+- ✅ Capture design decisions (min. 3) into Memory.Design_Decision
+- ✅ Populate Business_Glossary with embedding and search terms it introduces
+
+### 7.5 Documentation Capture Requirements
+
+Every Search module must populate the Memory database documentation tables as part of its design workflow. The table definitions, workflows, and full protocol are defined in the **Memory Module Design Standard, Section 8**.
+
+**Minimum requirements:**
+
+| Record Type | Table | Minimum | Notes |
+|-------------|-------|---------|-------|
+| Module_Registry | `Memory.Module_Registry` | 1 | Register this module with data_product and version |
+| Design_Decision | `Memory.Design_Decision` | 3 | Key architectural and schema choices |
+| Change_Log | `Memory.Change_Log` | 1 | Initial release entry (version 1.0.0) |
+| Business_Glossary | `Memory.Business_Glossary` | 3 | Embedding, vector, and search terms introduced |
+| Query_Cookbook | `Memory.Query_Cookbook` | 1 | Key query patterns (e.g., similarity search, RAG retrieval) |
+
+**Typical decision categories for Search modules:**
+
+| Decision Category | Example |
+|-------------------|---------|
+| `ARCHITECTURE` | Vector storage strategy (VECTOR datatype vs columnar legacy) |
+| `PERFORMANCE` | ANN index choice — KMEANS vs HNSW vs exact brute-force |
+| `SCHEMA` | Embedding dimensions and model selection |
+| `INTEGRATION` | RAG pattern design and content join strategy |
+| `OPERATIONAL` | Embedding refresh strategy (on-insert, daily batch, on-demand) |
+
+**Decision ID prefix for this module:** `DD-SEARCH-{NNN}` (e.g., `DD-SEARCH-001`)
+
+**Output file placement:** Write documentation capture SQL as the last numbered file in the search deployment directory (e.g., `04-search/05-documentation.sql`).
+
+**Full protocol, SQL templates, and ID conventions:** See Memory Module Design Standard, Section 8.3 (Workflow 2 — Capture).
 
 ---
 
@@ -789,6 +827,8 @@ Python APIs: teradatagenai, langchain-teradata, teradataml
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.5 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
+| 1.4 | 2026-03-20 | Added Section 7.5 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, and reference to Memory Module Section 8 protocol. Updated Section 7.3 checklist and 7.4 quality criteria to include documentation capture steps. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.3 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed embedding_key → embedding_id for all GENERATED ALWAYS AS IDENTITY columns | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.2 | 2026-03-17 | Updated naming convention: {entity}_id = Surrogate Key, {entity}_key = Natural Business Key, aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2025-02-27 | Changed is_current to be consistent with Domain module | Nathan Green, Worldwide Data Architecture Team, Teradata |

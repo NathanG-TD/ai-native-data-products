@@ -1,5 +1,5 @@
 # Observability Module Design Standard
-## AI-Native Data Product Architecture - Version 1.2
+## AI-Native Data Product Architecture - Version 1.4
 
 ---
 
@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.2 |
+| **Version** | 1.4 |
 | **Status** | STANDARD |
-| **Last Updated** | 2026-03-18 |
+| **Last Updated** | 2026-03-20 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Observability Module (Monitoring & Feedback) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -522,6 +522,41 @@ ORDER BY run_dts DESC;
 - [ ] OpenLineage integration configured
 - [ ] Retention policies defined
 - [ ] Integration with Memory configured
+- [ ] Module_Registry INSERT generated for this module
+- [ ] Min. 3 Design_Decision INSERTs generated
+- [ ] Change_Log initial release entry generated
+- [ ] Min. 3 Business_Glossary terms captured
+- [ ] Min. 1 Query_Cookbook recipe captured
+
+### 6.3 Documentation Capture Requirements
+
+Every Observability module must populate the Memory database documentation tables as part of its design workflow. The table definitions, workflows, and full protocol are defined in the **Memory Module Design Standard, Section 8**.
+
+**Minimum requirements:**
+
+| Record Type | Table | Minimum | Notes |
+|-------------|-------|---------|-------|
+| Module_Registry | `Memory.Module_Registry` | 1 | Register this module with data_product and version |
+| Design_Decision | `Memory.Design_Decision` | 3 | Key architectural and schema choices |
+| Change_Log | `Memory.Change_Log` | 1 | Initial release entry (version 1.0.0) |
+| Business_Glossary | `Memory.Business_Glossary` | 3 | Observability terms, metric definitions, and lineage concepts introduced |
+| Query_Cookbook | `Memory.Query_Cookbook` | 1 | Key query patterns (e.g., quality metric trend, agent outcome analysis) |
+
+**Typical decision categories for Observability modules:**
+
+| Decision Category | Example |
+|-------------------|---------|
+| `OPERATIONAL` | Quality threshold values and alerting strategy |
+| `INTEGRATION` | OpenLineage scope — which modules and tables are tracked |
+| `ARCHITECTURE` | Closed-loop feed strategy from agent_outcome into Memory.learned_strategy |
+| `SCHEMA` | Retention policy — how long to keep change events vs quality metrics |
+| `PERFORMANCE` | Aggregation window and metric granularity decisions |
+
+**Decision ID prefix for this module:** `DD-OBSERVABILITY-{NNN}` (e.g., `DD-OBSERVABILITY-001`)
+
+**Output file placement:** Write documentation capture SQL as the last numbered file in the observability deployment directory (e.g., `05-observability/05-documentation.sql`).
+
+**Full protocol, SQL templates, and ID conventions:** See Memory Module Design Standard, Section 8.3 (Workflow 2 — Capture).
 
 ---
 
@@ -560,7 +595,8 @@ OpenTelemetry:       Observability
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
-| 1.0 | 2025-02-13 | Initial draft of Design Standard | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.4 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
+| 1.3 | 2026-03-20 | Added Section 6.3 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, and reference to Memory Module Section 8 protocol. Updated Section 6.2 checklist to include documentation capture steps. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.2 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed {table}_key → {table}_id for all GENERATED ALWAYS AS IDENTITY columns | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2025-02-27 | changed meets_threshold & meets_sla to is_threshold_met & is_sla_met to be consistent with booleans accross modules | Nathan Green, Worldwide Data Architecture Team, Teradata |
 

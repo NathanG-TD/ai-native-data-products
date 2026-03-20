@@ -1,5 +1,5 @@
 # Memory Module Design Standard
-## AI-Native Data Product Architecture - Version 1.3
+## AI-Native Data Product Architecture - Version 1.6
 
 ---
 
@@ -7,11 +7,11 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.3 |
+| **Version** | 1.6 |
 | **Status** | STANDARD |
-| **Last Updated** | 2026-03-18 |
+| **Last Updated** | 2026-03-20 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
-| **Scope** | Memory Module (Agent State & Learning) |
+| **Scope** | Memory Module (Agent State, Learning & Documentation Sub-Module) |
 | **Type** | Design Standard (Structural Requirements) |
 | **Companion** | Advocated Data Management Standards (Implementation Guidance) |
 
@@ -26,6 +26,7 @@
 5. [Privacy and Scoping](#5-privacy-and-scoping)
 6. [Integration with Other Modules](#6-integration-with-other-modules)
 7. [Designer Responsibilities](#7-designer-responsibilities)
+8. [Documentation Sub-Module](#8-documentation-sub-module)
 
 ---
 
@@ -42,6 +43,7 @@ The Memory Module enables **agent learning, continuity, and collaboration** acro
 | **Preference Learning** | Agents adapt to user and business preferences |
 | **Meta-Learning** | Agents learn what works and improve over time |
 | **Privacy-Aware** | Scoped appropriately (user, team, organization) |
+| **Knowledge Repository** | Captures design decisions, rationale, and operational knowledge via the Documentation Sub-Module |
 
 ### 1.2 Primary Purpose: Enable Agent Evolution
 
@@ -53,6 +55,7 @@ The Memory Module enables **agent learning, continuity, and collaboration** acro
 4. **Session State** - Maintain context across interactions
 5. **Pattern Recognition** - Learn from outcomes over time
 6. **Collaborative Learning** - Share insights across agent instances
+7. **Design Knowledge** - Capture architectural decisions, business glossary, query patterns, and change history via the Documentation Sub-Module
 
 ### 1.3 Critical Principles
 
@@ -120,6 +123,14 @@ Memory does NOT store:
    - Current session context
    - Active workflows
    - **NOT detailed result sets**
+
+5. **Design Knowledge** (via Documentation Sub-Module)
+   - Architectural decisions and rationale (Architecture Decision Records)
+   - Business glossary terms introduced by each module
+   - Proven query patterns (query cookbook)
+   - Module version registry and change history
+   - Operational notes and known issues
+   - **NOT business domain data — keep in Domain Module**
 
 **OUT OF SCOPE:**
 
@@ -909,7 +920,7 @@ FROM TD_VECTORDISTANCE (
     ON current_session_embedding AS TargetTable PARTITION BY ANY
     ON Search.entity_embedding AS ReferenceTable DIMENSION
     WHERE ReferenceTable.entity_type = 'SESSION'
-      AND ReferenceTable.is_current = 'Y'
+      AND ReferenceTable.is_current = 1
     USING
         TargetFeatureColumns('embedding_vector')
         RefIDColumn('entity_id')
@@ -939,6 +950,32 @@ WHERE ls.strategy_category = 'QUERY_OPTIMIZATION'
 ORDER BY ls.success_rate DESC;
 ```
 
+### 6.5 Integration with Documentation Sub-Module (Recording Decisions)
+
+**Pattern**: Every module generates INSERT statements into the Memory database documentation tables during its design workflow. Documentation tables are co-located in the same `{ProductName}_Memory` database as the runtime memory tables.
+
+```sql
+-- When any module makes a significant design decision, it generates an INSERT:
+INSERT INTO Memory.Design_Decision
+(decision_id, decision_version, decision_title, decision_description,
+ context, alternatives_considered, rationale, consequences,
+ decision_status, decision_category,
+ source_module, module_version, affects_table,
+ decided_by, decided_date, valid_from, valid_to, is_current)
+VALUES
+('DD-MEMORY-001', 1,
+ 'Use BYTEINT for all boolean flags in Memory tables',
+ 'All is_active, is_validated, is_current columns use BYTEINT NOT NULL DEFAULT value',
+ 'Consistency with platform standard', 'Could use CHAR(1) Y/N or INTEGER',
+ 'BYTEINT is smallest integer type, native boolean equivalent on Teradata',
+ 'Consistent storage, clear intent, SQL filtering without type conversion',
+ 'ACCEPTED', 'NAMING',
+ 'MEMORY', '1.5.0', 'agent_session, agent_interaction, learned_strategy',
+ 'Worldwide Data Architecture Team', CURRENT_DATE, CURRENT_DATE, DATE '9999-12-31', 1);
+```
+
+See **Section 8** for the complete Documentation Sub-Module design, table definitions, workflows, and cross-module capture protocol.
+
 ---
 
 ## 7. Designer Responsibilities
@@ -953,6 +990,9 @@ ORDER BY ls.success_rate DESC;
 | **Privacy scoping** | Scope levels in use | USER, TEAM, ORGANIZATION |
 | **Retention policies** | How long to keep memory | 90 days for sessions, 2 years for learnings |
 | **Sharing policies** | What can be shared across agents | Organization-level strategies only |
+| **Design decisions** | Key architectural/schema choices for dp_documentation | Min. 3 decisions per module (see Section 8.3) |
+| **Glossary terms** | Domain terms introduced by this module | Min. 3 terms for Business_Glossary |
+| **Query cookbook entries** | Key query patterns for this module | Min. 1 recipe for Query_Cookbook |
 
 ### 7.2 Design Checklist
 
@@ -970,6 +1010,11 @@ ORDER BY ls.success_rate DESC;
 - [ ] Integration with Search (finding similar sessions/patterns)
 - [ ] Retention policies documented
 - [ ] Privacy policies documented
+- [ ] Module_Registry INSERT generated for this module
+- [ ] Min. 3 Design_Decision INSERTs generated
+- [ ] Change_Log initial release entry generated
+- [ ] Min. 3 Business_Glossary terms captured
+- [ ] Min. 1 Query_Cookbook recipe captured
 
 ### 7.3 Quality Criteria
 
@@ -983,10 +1028,482 @@ ORDER BY ls.success_rate DESC;
 - ✅ Learn from Observability outcomes
 - ✅ Use JSON for flexible context storage
 - ✅ Implement retention policies
+- ✅ Register itself in Memory.Module_Registry
+- ✅ Capture design decisions (min. 3) into Memory.Design_Decision
+- ✅ Populate Business_Glossary with terms it introduces
 
 ---
 
-## Appendix A: Quick Reference
+## 8. Documentation Sub-Module
+
+### 8.1 Core Principle (Never Violate)
+
+**Store design memory — never duplicate Semantic metadata.**
+
+The Documentation Sub-Module is the **design memory** of this data product. Just as runtime memory (Sections 3–4) captures what agents experienced and learned during *operation*, documentation captures what architects decided and why during *design*. Both are forms of memory — temporal, append-oriented, and structured around capturing history.
+
+| Store in Documentation | Keep in Semantic (not here) |
+|--------------------------|-------------------------------|
+| "We chose bi-temporal because of regulatory replay requirements" | Table/column names, PII flags, join paths |
+| "Use LEFT JOIN for Customer → Orders because not all customers have orders" | `table_relationship` rows |
+| "`income_bin` is computed as NTILE(5) OVER (ORDER BY income)" | `column_metadata` classification |
+
+**Separation**: Semantic stores *what exists and how it connects*. Documentation stores *why it exists, how to use it, and what changed*.
+
+### 8.2 Architecture: Per-Data-Product, Inside Memory Database
+
+Documentation tables live in the **same database as the other Memory tables** (`{ProductName}_Memory`). This keeps the data product fully self-contained and independently deployable — there is no shared cross-product documentation database and no external bootstrap prerequisite.
+
+```
+{ProductName}_Memory  (one database per data product)
+  ├── Runtime Memory tables
+  │     agent_session, agent_interaction,
+  │     learned_strategy, user_preference, discovered_pattern
+  │
+  └── Design Memory tables  (Documentation Sub-Module)
+        Module_Registry, Design_Decision, Business_Glossary,
+        Query_Cookbook, Implementation_Note, Change_Log
+```
+
+Documentation tables are created as part of the Memory module DDL deployment — no separate step required. The data product is complete and portable with no dependencies outside its own set of databases.
+
+**Which documentation tables to include:**
+
+| Table | Include When |
+|-------|-------------|
+| `Module_Registry` | Always — version backbone for point-in-time documentation |
+| `Design_Decision` | Always — architectural rationale is always valuable |
+| `Change_Log` | Always — version history drives documentation generation |
+| `Business_Glossary` | Always — term definitions reduce ambiguity for agents |
+| `Query_Cookbook` | Complex data products with multiple query patterns |
+| `Implementation_Note` | Complex deployments with operational gotchas |
+
+### 8.3 Two Workflows
+
+#### Workflow 1 — Capture (Record Decisions During Module Design)
+
+When any module is designed for this data product, it generates INSERT statements into the Memory database documentation tables. Output is written **inline with each module** as the last numbered script in that module's directory (e.g., `01-domain/05-documentation.sql`).
+
+**Module registration protocol:**
+```sql
+INSERT INTO Memory.Module_Registry
+(module_name, database_name, module_version, module_purpose,
+ key_entities, dependencies, dependents, data_owner, technical_owner,
+ version_date, is_current, valid_from, valid_to)
+VALUES
+('{MODULE_NAME}', '{ProductName}_{Module}', '1.0.0',
+ '{purpose}', '{entity_list}',
+ '{upstream_modules}', '{downstream_modules}',
+ '{owner}', '{tech_contact}',
+ CURRENT_DATE, 1, CURRENT_DATE, DATE '9999-12-31');
+```
+
+**Decision capture protocol:**
+```sql
+INSERT INTO Memory.Design_Decision
+(decision_id, decision_version, decision_title, decision_description,
+ context, alternatives_considered, rationale, consequences,
+ decision_status, decision_category,
+ source_module, module_version, affects_table,
+ decided_by, decided_date, valid_from, valid_to, is_current)
+VALUES
+('DD-{MODULE}-{NNN}', 1, '{title}', '{description}',
+ '{context}', '{alternatives}', '{rationale}', '{consequences}',
+ 'ACCEPTED', '{category}',
+ '{MODULE_NAME}', '{VERSION}', '{table_list}',
+ '{agent_or_team}', CURRENT_DATE, CURRENT_DATE, DATE '9999-12-31', 1);
+```
+
+**Decision ID convention:** `DD-{MODULE}-{NNN}` where MODULE is the short module name (DOMAIN, SEMANTIC, SEARCH, OBSERVABILITY, MEMORY, PREDICTION) and NNN is a zero-padded sequence within that module.
+
+**Version chain — updating a decision:**
+```sql
+-- Step 1: Close the current version
+UPDATE Memory.Design_Decision
+SET valid_to = CURRENT_DATE,
+    is_current = 0,
+    updated_timestamp = CURRENT_TIMESTAMP(6)
+WHERE decision_id = 'DD-MEMORY-001'
+  AND is_current = 1;
+
+-- Step 2: Insert new version
+INSERT INTO Memory.Design_Decision
+(decision_id, decision_version, decision_title, ...)
+VALUES
+('DD-MEMORY-001', 2, '{updated_title}', ...);
+```
+
+**Change log entry protocol:**
+```sql
+INSERT INTO Memory.Change_Log
+(change_id, version_number, change_title, change_description,
+ change_type, change_category, source_module,
+ affects_table, migration_steps, rollback_steps,
+ related_decision_id, deployed_date, deployed_by, deployment_status)
+VALUES
+('CL-{MODULE}-{NNN}', '{VERSION}', '{title}', '{description}',
+ '{type}', '{category}', '{MODULE_NAME}',
+ '{table_list}', '{migration_sql}', '{rollback_sql}',
+ 'DD-{MODULE}-{NNN}', CURRENT_DATE, '{deployer}', 'DEPLOYED');
+```
+
+#### Workflow 2 — Generate (Produce Markdown Documentation)
+
+Generates human-readable Markdown documentation for one or all modules of this data product, at a specific version or date.
+
+**Trigger phrases:**
+- "Generate documentation for the Memory module at v1.5.0"
+- "Generate documentation for all modules as of 2026-03-01"
+- "Generate current documentation for all modules"
+
+**Steps:**
+1. Determine module scope: single module or all modules
+2. Determine version anchor:
+   - **By version**: look up `version_date` from `Module_Registry` WHERE `module_version = :version`
+   - **By date**: use the date directly as `as_of_date`
+   - **Current**: use `CURRENT_DATE` or `is_current = 1`
+3. Query all documentation records valid at that point
+4. Render Markdown
+5. Write to `documentation/` directory at project root
+
+**File naming convention:**
+
+| Request Type | File Name |
+|-------------|-----------|
+| Single module by version | `documentation/{module}_v{version}_{YYYYMMDD}.md` |
+| Single module by date | `documentation/{module}_asof_{YYYYMMDD}.md` |
+| All modules current | `documentation/all_modules_current.md` |
+
+**During design phase (pre-deployment):** Read INSERT statements from the SQL output files to extract decision records, then render them as Markdown. The SQL files are the source of truth during design.
+
+### 8.4 Table Definitions
+
+#### Module_Registry
+
+Tracks all modules in this data product and their version history.
+
+```sql
+CREATE TABLE Memory.Module_Registry (
+    module_registry_key  BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    module_name          VARCHAR(50) NOT NULL,
+    database_name        VARCHAR(100) NOT NULL,
+    module_version       VARCHAR(20) NOT NULL,
+    module_purpose       CLOB NOT NULL,
+    module_scope         CLOB,
+    key_entities         VARCHAR(500),
+    dependencies         VARCHAR(500),
+    dependents           VARCHAR(500),
+    data_owner           VARCHAR(100),
+    technical_owner      VARCHAR(100),
+    refresh_frequency    VARCHAR(50),
+    version_date         DATE NOT NULL,
+    is_current           BYTEINT NOT NULL DEFAULT 1,
+    valid_from           DATE NOT NULL,
+    valid_to             DATE DEFAULT DATE '9999-12-31',
+    created_timestamp    TIMESTAMP(6) WITH TIME ZONE,
+    updated_timestamp    TIMESTAMP(6) WITH TIME ZONE
+)
+PRIMARY INDEX (module_registry_key);
+
+COMMENT ON TABLE Memory.Module_Registry IS
+'Version registry for all modules in this data product — backbone for point-in-time documentation generation';
+COMMENT ON COLUMN Memory.Module_Registry.module_name IS
+'Module name — DOMAIN, SEMANTIC, SEARCH, OBSERVABILITY, MEMORY, PREDICTION';
+COMMENT ON COLUMN Memory.Module_Registry.module_version IS
+'Semantic version string (1.0.0)';
+COMMENT ON COLUMN Memory.Module_Registry.is_current IS
+'1 = current version, 0 = historical — use to find latest version without date filter';
+COMMENT ON COLUMN Memory.Module_Registry.valid_from IS
+'Temporal validity start — when this version became active';
+COMMENT ON COLUMN Memory.Module_Registry.valid_to IS
+'Temporal validity end — 9999-12-31 for current version';
+```
+
+#### Design_Decision
+
+Architecture Decision Records with version chain. Same `decision_id` can have multiple rows with incrementing `decision_version`.
+
+```sql
+CREATE TABLE Memory.Design_Decision (
+    decision_key              BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    decision_id               VARCHAR(50) NOT NULL,
+    decision_version          INTEGER NOT NULL DEFAULT 1,
+    decision_title            VARCHAR(200) NOT NULL,
+    decision_description      CLOB,
+    context                   CLOB,
+    alternatives_considered   CLOB,
+    rationale                 CLOB,
+    consequences              CLOB,
+    decision_status           VARCHAR(20) NOT NULL,
+    decision_category         VARCHAR(50) NOT NULL,
+    source_module             VARCHAR(50) NOT NULL,
+    module_version            VARCHAR(20),
+    affects_table             VARCHAR(200),
+    decided_by                VARCHAR(100),
+    decided_date              DATE,
+    superseded_by             VARCHAR(50),
+    valid_from                DATE NOT NULL,
+    valid_to                  DATE DEFAULT DATE '9999-12-31',
+    is_current                BYTEINT NOT NULL DEFAULT 1,
+    created_timestamp         TIMESTAMP(6) WITH TIME ZONE,
+    updated_timestamp         TIMESTAMP(6) WITH TIME ZONE
+)
+PRIMARY INDEX (decision_key);
+
+COMMENT ON TABLE Memory.Design_Decision IS
+'Architecture Decision Records — captures why design choices were made, with version chain for tracking superseded decisions';
+COMMENT ON COLUMN Memory.Design_Decision.decision_id IS
+'Human-readable decision ID — format DD-{MODULE}-{NNN} (e.g., DD-MEMORY-001)';
+COMMENT ON COLUMN Memory.Design_Decision.decision_status IS
+'Decision lifecycle — PROPOSED, ACCEPTED, SUPERSEDED, DEPRECATED';
+COMMENT ON COLUMN Memory.Design_Decision.decision_category IS
+'Decision type — ARCHITECTURE, SCHEMA, NAMING, PERFORMANCE, SECURITY, INTEGRATION, OPERATIONAL';
+COMMENT ON COLUMN Memory.Design_Decision.superseded_by IS
+'decision_id of the replacement decision when status = SUPERSEDED';
+COMMENT ON COLUMN Memory.Design_Decision.is_current IS
+'1 = current version of this decision, 0 = historical — query with is_current = 1 for latest';
+```
+
+#### Business_Glossary
+
+Domain term definitions linked to source module, versioned temporally.
+
+```sql
+CREATE TABLE Memory.Business_Glossary (
+    glossary_key        BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    term                VARCHAR(200) NOT NULL,
+    term_category       VARCHAR(50) NOT NULL,
+    definition          CLOB NOT NULL,
+    business_context    CLOB,
+    synonyms            VARCHAR(500),
+    related_terms       VARCHAR(500),
+    related_table       VARCHAR(200),
+    related_column      VARCHAR(200),
+    source_module       VARCHAR(50) NOT NULL,
+    module_version      VARCHAR(20),
+    is_active           BYTEINT NOT NULL DEFAULT 1,
+    valid_from          DATE NOT NULL,
+    valid_to            DATE DEFAULT DATE '9999-12-31',
+    created_timestamp   TIMESTAMP(6) WITH TIME ZONE,
+    updated_timestamp   TIMESTAMP(6) WITH TIME ZONE
+)
+PRIMARY INDEX (glossary_key);
+
+COMMENT ON TABLE Memory.Business_Glossary IS
+'Domain term definitions — reduces ambiguity for agents and new team members, versioned per module';
+COMMENT ON COLUMN Memory.Business_Glossary.term_category IS
+'Term type — ENTITY, ATTRIBUTE, METRIC, BUSINESS_RULE, CLASSIFICATION, REFERENCE_CODE';
+COMMENT ON COLUMN Memory.Business_Glossary.is_active IS
+'1 = active term, 0 = retired or superseded';
+```
+
+#### Query_Cookbook
+
+Tested, reusable query patterns.
+
+```sql
+CREATE TABLE Memory.Query_Cookbook (
+    recipe_key              BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    recipe_id               VARCHAR(50) NOT NULL,
+    recipe_title            VARCHAR(200) NOT NULL,
+    recipe_description      CLOB NOT NULL,
+    use_case                VARCHAR(200) NOT NULL,
+    target_module           VARCHAR(50) NOT NULL,
+    sql_template            CLOB NOT NULL,
+    parameter_descriptions  CLOB,
+    performance_notes       CLOB,
+    complexity              VARCHAR(20) NOT NULL,
+    source_module           VARCHAR(50) NOT NULL,
+    module_version          VARCHAR(20),
+    is_active               BYTEINT NOT NULL DEFAULT 1,
+    valid_from              DATE NOT NULL,
+    valid_to                DATE DEFAULT DATE '9999-12-31',
+    created_timestamp       TIMESTAMP(6) WITH TIME ZONE,
+    updated_timestamp       TIMESTAMP(6) WITH TIME ZONE
+)
+PRIMARY INDEX (recipe_key);
+
+COMMENT ON TABLE Memory.Query_Cookbook IS
+'Proven query patterns — agents use these as starting points rather than generating SQL from scratch';
+COMMENT ON COLUMN Memory.Query_Cookbook.recipe_id IS
+'Human-readable recipe ID — format QC-{MODULE}-{NNN} (e.g., QC-MEMORY-001)';
+COMMENT ON COLUMN Memory.Query_Cookbook.target_module IS
+'Module this recipe queries — DOMAIN, SEMANTIC, SEARCH, MEMORY, PREDICTION, OBSERVABILITY, CROSS';
+COMMENT ON COLUMN Memory.Query_Cookbook.complexity IS
+'Query complexity — SIMPLE, MODERATE, COMPLEX, ADVANCED';
+COMMENT ON COLUMN Memory.Query_Cookbook.sql_template IS
+'SQL with :parameter placeholders — agents substitute values at runtime';
+```
+
+#### Implementation_Note
+
+Operational knowledge, workarounds, known issues.
+
+```sql
+CREATE TABLE Memory.Implementation_Note (
+    note_key            BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    note_id             VARCHAR(50) NOT NULL,
+    note_title          VARCHAR(200) NOT NULL,
+    note_content        CLOB NOT NULL,
+    note_category       VARCHAR(50) NOT NULL,
+    severity            VARCHAR(20),
+    affects_table       VARCHAR(200),
+    resolution_status   VARCHAR(20),
+    resolution_notes    CLOB,
+    source_module       VARCHAR(50) NOT NULL,
+    module_version      VARCHAR(20),
+    is_active           BYTEINT NOT NULL DEFAULT 1,
+    valid_from          DATE NOT NULL,
+    valid_to            DATE DEFAULT DATE '9999-12-31',
+    created_timestamp   TIMESTAMP(6) WITH TIME ZONE,
+    updated_timestamp   TIMESTAMP(6) WITH TIME ZONE
+)
+PRIMARY INDEX (note_key);
+
+COMMENT ON TABLE Memory.Implementation_Note IS
+'Operational knowledge — workarounds, known issues, deployment tips, and gotchas discovered during implementation';
+COMMENT ON COLUMN Memory.Implementation_Note.note_id IS
+'Human-readable note ID — format IN-{MODULE}-{NNN} (e.g., IN-MEMORY-001)';
+COMMENT ON COLUMN Memory.Implementation_Note.note_category IS
+'Note type — DEPLOYMENT, WORKAROUND, KNOWN_ISSUE, PERFORMANCE_TIP, OPERATIONAL, SECURITY';
+COMMENT ON COLUMN Memory.Implementation_Note.severity IS
+'Issue severity — LOW, MEDIUM, HIGH, CRITICAL (NULL for non-issue notes)';
+COMMENT ON COLUMN Memory.Implementation_Note.resolution_status IS
+'Resolution state — OPEN, IN_PROGRESS, RESOLVED, WONT_FIX';
+```
+
+#### Change_Log
+
+Versioned history of changes per module. Each row is a point-in-time event.
+
+```sql
+CREATE TABLE Memory.Change_Log (
+    change_key          BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    change_id           VARCHAR(50) NOT NULL,
+    version_number      VARCHAR(20) NOT NULL,
+    change_title        VARCHAR(200) NOT NULL,
+    change_description  CLOB NOT NULL,
+    change_type         VARCHAR(30) NOT NULL,
+    change_category     VARCHAR(50) NOT NULL,
+    source_module       VARCHAR(50) NOT NULL,
+    affects_table       VARCHAR(200),
+    migration_steps     CLOB,
+    rollback_steps      CLOB,
+    related_decision_id VARCHAR(50),
+    deployed_date       DATE,
+    deployed_by         VARCHAR(100),
+    deployment_status   VARCHAR(20) NOT NULL,
+    created_timestamp   TIMESTAMP(6) WITH TIME ZONE
+)
+PRIMARY INDEX (change_key);
+
+COMMENT ON TABLE Memory.Change_Log IS
+'Versioned change history — each row is a point-in-time event; ordered by version_number to reconstruct deployment history';
+COMMENT ON COLUMN Memory.Change_Log.change_id IS
+'Human-readable change ID — format CL-{MODULE}-{NNN} (e.g., CL-MEMORY-001)';
+COMMENT ON COLUMN Memory.Change_Log.change_type IS
+'Change type — INITIAL_RELEASE, SCHEMA_CHANGE, FEATURE_ADDITION, BUG_FIX, PERFORMANCE, DEPRECATION';
+COMMENT ON COLUMN Memory.Change_Log.change_category IS
+'Impact category — BREAKING, NON_BREAKING, ADDITIVE, DEPRECATION';
+COMMENT ON COLUMN Memory.Change_Log.related_decision_id IS
+'Links to Design_Decision.decision_id — traceability from change to rationale';
+COMMENT ON COLUMN Memory.Change_Log.deployment_status IS
+'Deployment state — PLANNED, DEPLOYED, ROLLED_BACK';
+```
+
+### 8.5 Temporal Query Patterns
+
+```sql
+-- Current decisions for a module
+SELECT * FROM Memory.Design_Decision
+WHERE source_module = :module_name
+  AND is_current = 1;
+
+-- All decisions for a module as of a specific date
+SELECT * FROM Memory.Design_Decision
+WHERE source_module = :module_name
+  AND valid_from <= :as_of_date
+  AND valid_to > :as_of_date;
+
+-- All decisions for a module as of a specific version
+SELECT dd.*
+FROM Memory.Design_Decision dd
+WHERE dd.source_module = :module_name
+  AND dd.valid_from <= (
+      SELECT mr.version_date
+      FROM Memory.Module_Registry mr
+      WHERE mr.module_name = :module_name
+        AND mr.module_version = :version
+  )
+  AND dd.valid_to > (
+      SELECT mr.version_date
+      FROM Memory.Module_Registry mr
+      WHERE mr.module_name = :module_name
+        AND mr.module_version = :version
+  );
+
+-- Change log up to a version for a module
+SELECT * FROM Memory.Change_Log
+WHERE source_module = :module_name
+  AND version_number <= :version
+ORDER BY version_number, created_timestamp;
+```
+
+Same temporal pattern applies to `Business_Glossary`, `Query_Cookbook`, and `Implementation_Note`.
+
+### 8.6 Standard Views
+
+| View | Purpose |
+|------|---------|
+| `v_Current_Decisions` | All current (is_current=1) non-superseded decisions |
+| `v_Module_Registry_Current` | Current version of each module |
+| `v_Glossary_Active` | Active glossary terms (is_active=1) |
+| `v_Cookbook_Active` | Active recipes with complexity ranking |
+| `v_Issues_Open` | Open issues ordered by severity |
+| `v_Change_History` | Full change log ordered by version desc |
+| `v_Documentation_Search` | Unified text search across all documentation tables |
+
+### 8.7 Cross-Module Capture Protocol
+
+When any module is designed for this data product, it generates INSERT statements into `Memory` documentation tables.
+
+**Each module is responsible for:**
+
+1. Registering itself in `Module_Registry`
+2. Generating `Design_Decision` INSERTs for every significant design choice (min. 3)
+3. Generating a `Change_Log` entry for the initial release (version 1.0.0)
+4. Generating `Business_Glossary` entries for domain terms it introduces (min. 3)
+5. Generating `Query_Cookbook` entries for key query patterns it supports (min. 1)
+
+**Decision categories by module type:**
+
+| Module | Typical Decision Categories |
+|--------|-----------------------------|
+| Domain | ARCHITECTURE (source mapping), SCHEMA (entity structure) |
+| Semantic | INTEGRATION (relationship mapping), NAMING (metadata standards) |
+| Search | ARCHITECTURE (vector strategy), PERFORMANCE (index choice) |
+| Observability | OPERATIONAL (monitoring thresholds), INTEGRATION (lineage scope) |
+| Memory | ARCHITECTURE (session strategy), SECURITY (privacy scoping) |
+| Prediction | ARCHITECTURE (feature store strategy), SCHEMA (feature table design) |
+
+**ID conventions:**
+
+| Record Type | Format | Example |
+|-------------|--------|---------|
+| Design Decision | `DD-{MODULE}-{NNN}` | `DD-MEMORY-001` |
+| Change Log | `CL-{MODULE}-{NNN}` | `CL-MEMORY-001` |
+| Query Cookbook | `QC-{MODULE}-{NNN}` | `QC-MEMORY-001` |
+| Implementation Note | `IN-{MODULE}-{NNN}` | `IN-MEMORY-001` |
+
+**Temporal field standards** for all INSERTs:
+- `valid_from = CURRENT_DATE`
+- `valid_to = DATE '9999-12-31'`
+- `is_current = 1` (for Design_Decision, Module_Registry)
+- `is_active = 1` (for Business_Glossary, Query_Cookbook)
+- `decision_status = 'ACCEPTED'` (for new decisions)
+
+---
+
 
 ### Core Principles
 
@@ -1133,6 +1650,9 @@ Discovered Patterns:    Indefinite if validated
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.6 | 2026-03-20 | Fixed = 'Y' filter value in Search integration example (Section 6.3) to = 1. | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.5 | 2026-03-20 | Revised Documentation Sub-Module (Section 8) to align with data product self-containment principle. Removed shared dp_documentation cross-product database pattern. Documentation tables now reside in the same {ProductName}_Memory database as runtime memory tables, framed as "design memory" alongside "runtime memory". Removed data_product column from all 6 table DDL definitions. Removed cross-product (data_product = 'ALL') pattern. Simplified temporal queries. Collapsed 3 workflows to 2 (Bootstrap removed — documentation tables created as part of Memory DDL). Updated Section 6.5 example INSERT to use Memory.Design_Decision. | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.4 | 2026-03-20 | Added Documentation Sub-Module (Section 8) — merged standalone documentation skill into Memory standard. Covers shared dp_documentation database, 6 table definitions (Module_Registry, Design_Decision, Business_Glossary, Query_Cookbook, Implementation_Note, Change_Log), 3 workflows (Bootstrap, Capture, Generate), temporal query patterns, standard views, and cross-module capture protocol. Updated Sections 1.1, 1.2, 2.1, 6, 7 to reference documentation capabilities. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.3 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed {table}_key → {table}_id for GENERATED ALWAYS AS IDENTITY columns; swapped session_key (INTEGER surrogate) ↔ session_id (VARCHAR natural key) in agent_session | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.2 | 2026-03-17 | Updated naming convention: {entity}_id = Surrogate Key, {entity}_key = Natural Business Key; updated all party_key/entity_key references in "do not store" examples to party_id, aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2025-02-27 | Changed is_active & is_validated to be consistent and align with boolean standards from Domain | Nathan Green, Worldwide Data Architecture Team, Teradata |
