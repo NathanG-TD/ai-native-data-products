@@ -62,17 +62,17 @@ Semantic module helps agents write correct SQL by answering:
 ```sql
 CREATE TABLE Semantic.entity_metadata (
     entity_metadata_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    entity_name VARCHAR(100) NOT NULL,
+    entity_name VARCHAR(128) NOT NULL,
     entity_description VARCHAR(1000) NOT NULL,
     module_name VARCHAR(50) NOT NULL,
-    database_name VARCHAR(100),
-    table_name VARCHAR(100) NOT NULL,
-    view_name VARCHAR(100),
-    surrogate_key_column VARCHAR(100),
-    natural_key_column VARCHAR(100),
+    database_name VARCHAR(128),
+    table_name VARCHAR(128) NOT NULL,
+    view_name VARCHAR(128),
+    surrogate_key_column VARCHAR(128),
+    natural_key_column VARCHAR(128),
     temporal_pattern VARCHAR(50),
-    current_flag_column VARCHAR(100),
-    deleted_flag_column VARCHAR(100),
+    current_flag_column VARCHAR(128),
+    deleted_flag_column VARCHAR(128),
     industry_standard VARCHAR(50),
     is_active BYTEINT NOT NULL DEFAULT 1,
     created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
@@ -137,9 +137,9 @@ COMMENT ON COLUMN Semantic.entity_metadata.updated_at IS
 ```sql
 CREATE TABLE Semantic.column_metadata (
     column_metadata_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    database_name VARCHAR(100) NOT NULL,
-    table_name VARCHAR(100) NOT NULL,
-    column_name VARCHAR(100) NOT NULL,
+    database_name VARCHAR(128) NOT NULL,
+    table_name VARCHAR(128) NOT NULL,
+    column_name VARCHAR(128) NOT NULL,
     business_description VARCHAR(1000),
     is_pii BYTEINT NOT NULL DEFAULT 0,
     is_sensitive BYTEINT NOT NULL DEFAULT 0,
@@ -260,7 +260,7 @@ CREATE TABLE Semantic.data_product_map (
     module_purpose VARCHAR(500),
     
     -- Physical location (CRITICAL for agent discovery)
-    database_name VARCHAR(100) NOT NULL,
+    database_name VARCHAR(128) NOT NULL,
     naming_pattern VARCHAR(20),  -- 'SEPARATE_DB' or 'SINGLE_DB_PREFIX'
     table_prefix VARCHAR(10),    -- If using prefix pattern
     
@@ -362,14 +362,14 @@ ORDER BY module_name;
 ```sql
 CREATE TABLE Semantic.table_relationship (
     relationship_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    relationship_name VARCHAR(100) NOT NULL,
+    relationship_name VARCHAR(128) NOT NULL,
     relationship_description VARCHAR(1000),
-    source_database VARCHAR(100),
+    source_database VARCHAR(128),
     source_table VARCHAR(100) NOT NULL,
-    source_column VARCHAR(100) NOT NULL,
-    target_database VARCHAR(100),
+    source_column VARCHAR(128) NOT NULL,
+    target_database VARCHAR(128),
     target_table VARCHAR(100) NOT NULL,
-    target_column VARCHAR(100) NOT NULL,
+    target_column VARCHAR(128) NOT NULL,
     relationship_type VARCHAR(50) NOT NULL,
     cardinality VARCHAR(20),
     relationship_meaning VARCHAR(500),

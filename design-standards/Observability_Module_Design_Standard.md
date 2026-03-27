@@ -74,8 +74,8 @@ CREATE TABLE Observability.change_event (
     change_event_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     
     -- What changed (TABLE LEVEL - not individual records)
-    database_name VARCHAR(100),
-    table_name VARCHAR(100) NOT NULL,
+    database_name VARCHAR(128),
+    table_name VARCHAR(128) NOT NULL,
     
     -- Change details
     change_type VARCHAR(20) NOT NULL,  -- 'INSERT', 'UPDATE', 'DELETE', 'MERGE', 'TRUNCATE'
@@ -167,10 +167,10 @@ INSERT INTO Observability.change_event (
 ```sql
 CREATE TABLE Observability.data_quality_metric (
     quality_metric_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    database_name VARCHAR(100),
-    table_name VARCHAR(100) NOT NULL,
-    column_name VARCHAR(100),
-    metric_name VARCHAR(100) NOT NULL,
+    database_name VARCHAR(128),
+    table_name VARCHAR(128) NOT NULL,
+    column_name VARCHAR(128),
+    metric_name VARCHAR(128) NOT NULL,
     metric_value DECIMAL(10,4),
     metric_category VARCHAR(50),
     measured_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL,
@@ -226,10 +226,10 @@ COMMENT ON COLUMN Observability.data_quality_metric.created_at IS
 ```sql
 CREATE TABLE Observability.data_lineage (
     lineage_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    source_database VARCHAR(100),
+    source_database VARCHAR(128),
     source_table VARCHAR(100),
     source_system VARCHAR(100),
-    target_database VARCHAR(100),
+    target_database VARCHAR(128),
     target_table VARCHAR(100) NOT NULL,
     transformation_type VARCHAR(50),
     transformation_logic VARCHAR(4000),
@@ -307,7 +307,7 @@ CREATE TABLE Observability.model_performance (
     performance_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
     model_key VARCHAR(100) NOT NULL,
     model_version VARCHAR(20) NOT NULL,
-    metric_name VARCHAR(100) NOT NULL,
+    metric_name VARCHAR(128) NOT NULL,
     metric_value DECIMAL(10,6),
     evaluation_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     sample_size INTEGER,

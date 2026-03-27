@@ -346,14 +346,14 @@ Party_Enriched   -- No suffix = View (with joins)
 ```sql
 -- Example: Semantic module table documenting entity patterns
 CREATE TABLE Semantic.EntityMetadata (
-    entity_name VARCHAR(100),
+    entity_name VARCHAR(128),
     entity_purpose VARCHAR(500),
-    primary_table_name VARCHAR(100),
-    current_view_name VARCHAR(100),
-    surrogate_key_column VARCHAR(100),
-    natural_key_column VARCHAR(100),
-    current_flag_column VARCHAR(100),
-    deleted_flag_column VARCHAR(100),
+    primary_table_name VARCHAR(128),
+    current_view_name VARCHAR(128),
+    surrogate_key_column VARCHAR(128),
+    natural_key_column VARCHAR(128),
+    current_flag_column VARCHAR(128),
+    deleted_flag_column VARCHAR(128),
     source_system VARCHAR(100),
     ...
 );

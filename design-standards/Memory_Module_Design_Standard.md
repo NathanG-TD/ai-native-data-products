@@ -426,7 +426,7 @@ WHERE referenced_tables LIKE '%Party_H%'
 ```sql
 CREATE TABLE Memory.learned_strategy (
     strategy_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    strategy_name VARCHAR(100) NOT NULL,
+    strategy_name VARCHAR(128) NOT NULL,
     strategy_description VARCHAR(1000),
     
     -- Strategy context
@@ -545,7 +545,7 @@ CREATE TABLE Memory.user_preference (
     
     -- Preference definition
     preference_category VARCHAR(50),  -- 'REPORT_FORMAT', 'DATA_FILTER', 'AGGREGATION_LEVEL'
-    preference_name VARCHAR(100) NOT NULL,
+    preference_name VARCHAR(128) NOT NULL,
     preference_value VARCHAR(1000),
     preference_value_json JSON,
     
@@ -625,7 +625,7 @@ COMMENT ON COLUMN Memory.user_preference.updated_at IS
 ```sql
 CREATE TABLE Memory.discovered_pattern (
     pattern_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    pattern_name VARCHAR(100) NOT NULL,
+    pattern_name VARCHAR(128) NOT NULL,
     pattern_description VARCHAR(1000),
     
     -- Pattern definition
@@ -1186,7 +1186,7 @@ Tracks all modules in this data product and their version history.
 CREATE TABLE Memory.Module_Registry (
     module_registry_key  BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     module_name          VARCHAR(50) NOT NULL,
-    database_name        VARCHAR(100) NOT NULL,
+database_name VARCHAR(128) NOT NULL,
     module_version       VARCHAR(20) NOT NULL,
     module_purpose       CLOB NOT NULL,
     module_scope         CLOB,
