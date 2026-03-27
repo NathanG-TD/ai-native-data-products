@@ -611,7 +611,7 @@ CREATE TABLE Observability.DataLineage_H (
     batch_id            VARCHAR(50),
     loaded_dts          TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     extraction_dts      TIMESTAMP(6) WITH TIME ZONE,
-    transformation_name VARCHAR(100),
+    transformation_name VARCHAR(128),
     lineage_metadata_json JSON,
     PRIMARY INDEX (entity_id)
 );
@@ -976,7 +976,7 @@ CREATE TABLE Observability.ChangeEvent_H (
     
     -- Context
     session_id          VARCHAR(100),
-    application_name    VARCHAR(100),
+    application_name VARCHAR(128),
     ip_address          VARCHAR(50),
     
     PRIMARY INDEX (entity_id, changed_dts)

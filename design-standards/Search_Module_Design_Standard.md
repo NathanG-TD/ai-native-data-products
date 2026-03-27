@@ -155,7 +155,7 @@ CREATE TABLE Search.entity_embedding (
     -- Source identification (what was embedded)
     source_module VARCHAR(50),        -- 'Domain', 'Prediction', etc.
     source_table VARCHAR(100),        -- 'Party_H', 'Product_H', etc.
-    source_column VARCHAR(100),       -- Which column was embedded (e.g., 'description')
+    source_column VARCHAR(128),       -- Which column was embedded (e.g., 'description')
     
     -- Vector embedding (Teradata native VECTOR datatype)
     embedding_vector VECTOR,          -- FLOAT32(n) format
@@ -286,7 +286,7 @@ CREATE TABLE Search.product_embedding_GOOD (
     embedding_id INTEGER,
     product_id BIGINT,              -- ID only
     entity_type VARCHAR(50),         -- 'PRODUCT'
-    source_column VARCHAR(100),      -- 'product_description'
+    source_column VARCHAR(128),      -- 'product_description'
     embedding_vector VECTOR,
     embedding_dimensions INTEGER,
     embedding_model VARCHAR(100),
@@ -469,7 +469,7 @@ CREATE TABLE Search.party_embedding (
     party_id BIGINT NOT NULL,  -- FK to Domain.Party_H
     
     -- What was embedded (metadata, not content)
-    embedded_column VARCHAR(100),  -- 'description', 'notes', 'combined_text'
+    embedded_column VARCHAR(128),  -- 'description', 'notes', 'combined_text'
     
     -- Vector
     embedding_vector VECTOR,

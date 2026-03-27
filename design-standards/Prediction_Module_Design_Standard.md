@@ -184,7 +184,7 @@ CREATE TABLE Prediction.customer_behavioral_features (
     is_current BYTEINT NOT NULL DEFAULT 1,
     
     -- Feature metadata
-    feature_group_name VARCHAR(100) NOT NULL DEFAULT 'customer_behavioral',
+    feature_group_name VARCHAR(128) NOT NULL DEFAULT 'customer_behavioral',
     feature_group_version VARCHAR(20),
     computation_dts TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6),
     
@@ -277,7 +277,7 @@ CREATE TABLE Prediction.feature_value (
     entity_type VARCHAR(50) NOT NULL,
     
     -- Feature identification
-    feature_name VARCHAR(100) NOT NULL,
+    feature_name VARCHAR(128) NOT NULL,
     feature_group VARCHAR(100),
     
     -- Feature value (flexible storage)
@@ -605,7 +605,7 @@ INSERT INTO Prediction.customer_features (
 -- Feature drift/quality tracked in Observability (not Prediction)
 CREATE TABLE Observability.feature_quality (
     quality_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    feature_name VARCHAR(100) NOT NULL,
+    feature_name VARCHAR(128) NOT NULL,
     feature_group VARCHAR(100),
     evaluated_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     null_percentage DECIMAL(5,4),
