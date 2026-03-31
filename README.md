@@ -152,7 +152,7 @@ autonomous discovery via the Semantic module.
 
 ## License
 
-Copyright © 2025 Teradata Corporation
+Copyright © 2025-2026 Teradata Corporation
 
 Licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0
 International (CC BY-NC-SA 4.0). See [LICENSE.md](LICENSE.md) for full terms.
