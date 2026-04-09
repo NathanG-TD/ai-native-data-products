@@ -1,5 +1,5 @@
 # Observability Module Design Standard
-## AI-Native Data Product Architecture - Version 1.4
+## AI-Native Data Product Architecture - Version 1.5
 
 ---
 
@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.4 |
+| **Version** | 1.5 |
 | **Status** | STANDARD |
-| **Last Updated** | 2026-03-20 |
+| **Last Updated** | 2026-04-09 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Observability Module (Monitoring & Feedback) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -21,9 +21,10 @@
 1. [AI-Native Observability Module Overview](#1-ai-native-observability-module-overview)
 2. [Module Scope and Boundaries](#2-module-scope-and-boundaries)
 3. [Core Observability Tables](#3-core-observability-tables)
-4. [Open Standards Integration](#4-open-standards-integration)
-5. [Integration with Other Modules](#5-integration-with-other-modules)
-6. [Designer Responsibilities](#6-designer-responsibilities)
+4. [Semantic Views](#4-semantic-views)
+5. [Open Standards Integration](#5-open-standards-integration)
+6. [Integration with Other Modules](#6-integration-with-other-modules)
+7. [Designer Responsibilities](#7-designer-responsibilities)
 
 ---
 
@@ -36,7 +37,7 @@ The Observability Module monitors data product health and enables continuous imp
 **Key capabilities**:
 - Data quality monitoring
 - Change tracking (audit trail)
-- Data lineage (provenance)
+- Data lineage (provenance) — definitional and operational
 - Performance monitoring
 - Outcome tracking
 
@@ -48,6 +49,21 @@ Observability stores **events and metrics**, not business data:
 - ✅ "Data quality score for Party_H: 0.95"
 - ❌ NOT the actual Party records
 
+### 1.3 Lineage Separation Principle: Definition vs Execution
+
+Lineage is modelled as two distinct concerns:
+
+| Concern | Table | Question it answers | Row cardinality |
+|---------|-------|-------------------|-----------------|
+| **Definitional** | `data_lineage` | *"What are the declared data flows?"* | One row per source → job → target |
+| **Operational** | `lineage_run` | *"Did this flow run, and how did it go?"* | Many rows per flow over time |
+
+This separation ensures:
+- ✅ Graph visualisation consumes a stable, deduplicated edge list (definition only)
+- ✅ Execution monitoring follows the "events and metrics" principle
+- ✅ Independent retention policies — definitions live as long as the product; execution records follow event-retention windows
+- ✅ Clear mutation semantics — a new INSERT into `data_lineage` means a new flow; a new INSERT into `lineage_run` means a new execution of an existing flow
+
 ---
 
 ## 2. Module Scope and Boundaries
@@ -55,7 +71,7 @@ Observability stores **events and metrics**, not business data:
 **IN SCOPE**:
 - Change events (what, when, who, why)
 - Data quality metrics
-- Data lineage (OpenLineage aligned)
+- Data lineage — definition (declared flows) and execution (run history) (OpenLineage aligned)
 - Performance metrics
 - Outcome tracking
 
@@ -221,86 +237,214 @@ COMMENT ON COLUMN Observability.data_quality_metric.created_at IS
 'Timestamp when quality metric record was created';
 ```
 
-### 3.3 data_lineage (OpenLineage Aligned)
+### 3.3 data_lineage (Definitional — OpenLineage Aligned)
+
+The `data_lineage` table declares the **structural data flows** within and into this data product. One row per unique source → job → target relationship. This table changes only when the pipeline design changes — not on every execution.
+
+**Consumed by**: `lineage_graph` view, agent discovery, impact analysis.
 
 ```sql
 CREATE TABLE Observability.data_lineage (
-    lineage_id INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY,
-    source_database VARCHAR(128),
-    source_table VARCHAR(100),
-    source_system VARCHAR(100),
-    target_database VARCHAR(128),
-    target_table VARCHAR(100) NOT NULL,
-    transformation_type VARCHAR(50),
-    transformation_logic VARCHAR(4000),
-    job_name VARCHAR(200),
-    run_dts TIMESTAMP(6) WITH TIME ZONE NOT NULL,
-    openlineage_run_id VARCHAR(200),
-    openlineage_job_name VARCHAR(200),
-    openlineage_namespace VARCHAR(200),
-    records_read INTEGER,
-    records_written INTEGER,
-    run_status VARCHAR(20),
-    created_at TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
+    lineage_id              INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY
+
+    /* ── Source ─────────────────────────────────────────────────────────── */
+   ,source_database         VARCHAR(128)
+   ,source_table            VARCHAR(100)
+   ,source_system           VARCHAR(100)          /* External origin; NULL if internal */
+
+    /* ── Target ─────────────────────────────────────────────────────────── */
+   ,target_database         VARCHAR(128)
+   ,target_table            VARCHAR(100) NOT NULL
+
+    /* ── Transformation ─────────────────────────────────────────────────── */
+   ,job_name                VARCHAR(200)           /* ETL job / process name  */
+   ,transformation_type     VARCHAR(50)            /* ETL, FEATURE_ENG, AGGREGATION, JOIN, EMBEDDING_GEN … */
+   ,transformation_logic    VARCHAR(4000)          /* SQL, algorithm, or prose description */
+
+    /* ── OpenLineage alignment ──────────────────────────────────────────── */
+   ,openlineage_job_name    VARCHAR(200)           /* Job identifier in OpenLineage format */
+   ,openlineage_namespace   VARCHAR(200)           /* Environment / cluster identifier    */
+
+    /* ── Lifecycle ──────────────────────────────────────────────────────── */
+   ,is_active               BYTEINT NOT NULL DEFAULT 1   /* 1 = live flow, 0 = retired */
+   ,registered_dts          TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
+   ,retired_dts             TIMESTAMP(6) WITH TIME ZONE  /* Set when is_active → 0 */
+
+    /* ── Metadata ───────────────────────────────────────────────────────── */
+   ,created_at              TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
 )
 PRIMARY INDEX (lineage_id);
 
-COMMENT ON TABLE Observability.data_lineage IS 
-'Data lineage tracking - records data provenance and transformations aligned with OpenLineage standard';
+COMMENT ON TABLE Observability.data_lineage IS
+'Definitional data lineage — declares structural data flows (source → job → target) within the data product. One row per unique flow. Changes only when pipeline design changes. Operational execution is tracked in lineage_run.';
 
-COMMENT ON COLUMN Observability.data_lineage.lineage_id IS 
-'Surrogate key for lineage record';
+COMMENT ON COLUMN Observability.data_lineage.lineage_id IS
+'Surrogate key for lineage definition record';
 
-COMMENT ON COLUMN Observability.data_lineage.source_database IS 
-'Source database name - where input data came from';
+COMMENT ON COLUMN Observability.data_lineage.source_database IS
+'Source database name — where input data originates';
 
-COMMENT ON COLUMN Observability.data_lineage.source_table IS 
-'Source table name - input table for transformation';
+COMMENT ON COLUMN Observability.data_lineage.source_table IS
+'Source table name — input table for transformation';
 
-COMMENT ON COLUMN Observability.data_lineage.source_system IS 
-'External source system name - originating system for data, NULL if internal Teradata source';
+COMMENT ON COLUMN Observability.data_lineage.source_system IS
+'External source system name — originating system for data. NULL if internal Teradata source';
 
-COMMENT ON COLUMN Observability.data_lineage.target_database IS 
-'Target database name - where output data was written';
+COMMENT ON COLUMN Observability.data_lineage.target_database IS
+'Target database name — where output data is written';
 
-COMMENT ON COLUMN Observability.data_lineage.target_table IS 
-'Target table name - output table from transformation';
+COMMENT ON COLUMN Observability.data_lineage.target_table IS
+'Target table name — output table from transformation';
 
-COMMENT ON COLUMN Observability.data_lineage.transformation_type IS 
-'Transformation type - ETL, FEATURE_ENG, AGGREGATION, JOIN, EMBEDDING_GEN, etc.';
+COMMENT ON COLUMN Observability.data_lineage.job_name IS
+'Job or process name — identifies the ETL job, stored procedure, or pipeline step';
 
-COMMENT ON COLUMN Observability.data_lineage.transformation_logic IS 
-'Transformation logic description - SQL, algorithm, or process description';
+COMMENT ON COLUMN Observability.data_lineage.transformation_type IS
+'Transformation type — ETL, FEATURE_ENG, AGGREGATION, JOIN, EMBEDDING_GEN, FILTER, PIVOT, etc.';
 
-COMMENT ON COLUMN Observability.data_lineage.job_name IS 
-'Job or process name - identifies the transformation job';
+COMMENT ON COLUMN Observability.data_lineage.transformation_logic IS
+'Transformation logic description — SQL, algorithm, or prose description of the transformation';
 
-COMMENT ON COLUMN Observability.data_lineage.run_dts IS 
-'When transformation ran - timestamp of execution';
+COMMENT ON COLUMN Observability.data_lineage.openlineage_job_name IS
+'OpenLineage job name — job identifier in OpenLineage format for external lineage system correlation';
 
-COMMENT ON COLUMN Observability.data_lineage.openlineage_run_id IS 
-'OpenLineage run UUID - correlates with OpenLineage events for external lineage systems (Marquez, Amundsen)';
+COMMENT ON COLUMN Observability.data_lineage.openlineage_namespace IS
+'OpenLineage namespace — environment or cluster identifier (production, staging, etc.)';
 
-COMMENT ON COLUMN Observability.data_lineage.openlineage_job_name IS 
-'OpenLineage job name - job identifier in OpenLineage format';
+COMMENT ON COLUMN Observability.data_lineage.is_active IS
+'Active flag — 1 = live flow in current pipeline design, 0 = retired flow preserved for historical reference';
 
-COMMENT ON COLUMN Observability.data_lineage.openlineage_namespace IS 
-'OpenLineage namespace - environment or cluster identifier (production, staging, etc.)';
+COMMENT ON COLUMN Observability.data_lineage.registered_dts IS
+'Timestamp when this lineage flow was first registered — records when the flow entered the blueprint';
 
-COMMENT ON COLUMN Observability.data_lineage.records_read IS 
-'Number of records read from source - input volume metric';
+COMMENT ON COLUMN Observability.data_lineage.retired_dts IS
+'Timestamp when this lineage flow was retired — NULL while active, set when is_active transitions to 0';
 
-COMMENT ON COLUMN Observability.data_lineage.records_written IS 
-'Number of records written to target - output volume metric';
-
-COMMENT ON COLUMN Observability.data_lineage.run_status IS 
-'Execution status - SUCCESS, FAILED, PARTIAL - indicates transformation outcome';
-
-COMMENT ON COLUMN Observability.data_lineage.created_at IS 
-'Timestamp when lineage record was created';
+COMMENT ON COLUMN Observability.data_lineage.created_at IS
+'Timestamp when lineage definition record was created';
 ```
 
-### 3.4 model_performance
+**Example — Registering a lineage flow**:
+```sql
+-- Register the definitional flow (once, when pipeline is designed)
+INSERT INTO Observability.data_lineage (
+    source_database, source_table, source_system,
+    target_database, target_table,
+    job_name, transformation_type, transformation_logic
+) VALUES (
+    'Domain', 'Party_H', NULL,
+    'Prediction', 'customer_features',
+    'ETL_PARTY_FEATURES', 'FEATURE_ENG',
+    'Extracts demographic and account features from Party_H for ML scoring'
+);
+```
+
+### 3.4 lineage_run (Operational — Execution Log)
+
+The `lineage_run` table records **every execution** of a declared lineage flow. One row per execution. Aligns with the Observability principle: events and metrics, not data.
+
+**Consumed by**: Monitoring dashboards, SLA checks, data freshness calculations, Memory closed-loop learning.
+
+**Volume**: Many rows per `lineage_id` over time (event-scale).
+
+```sql
+CREATE TABLE Observability.lineage_run (
+    lineage_run_id          INTEGER NOT NULL GENERATED ALWAYS AS IDENTITY
+
+    /* ── Link to definition ─────────────────────────────────────────────── */
+   ,lineage_id              INTEGER NOT NULL        /* FK → data_lineage.lineage_id */
+
+    /* ── Execution details ──────────────────────────────────────────────── */
+   ,run_dts                 TIMESTAMP(6) WITH TIME ZONE NOT NULL
+   ,run_status              VARCHAR(20) NOT NULL     /* SUCCESS, FAILED, PARTIAL, RUNNING */
+   ,run_duration_ms         INTEGER                  /* Wall-clock execution time           */
+
+    /* ── Volume metrics ─────────────────────────────────────────────────── */
+   ,records_read            INTEGER
+   ,records_written         INTEGER
+   ,records_rejected        INTEGER                  /* Rows that failed validation / transform */
+
+    /* ── Batch correlation ──────────────────────────────────────────────── */
+   ,batch_key               VARCHAR(100)             /* Links to change_event.batch_key     */
+   ,job_name                VARCHAR(200)             /* Denormalised for fast querying       */
+
+    /* ── OpenLineage alignment ──────────────────────────────────────────── */
+   ,openlineage_run_id      VARCHAR(200)             /* Per-execution UUID from OpenLineage  */
+
+    /* ── Error tracking ─────────────────────────────────────────────────── */
+   ,error_message           VARCHAR(2000)            /* Captured on FAILED / PARTIAL runs    */
+
+    /* ── Metadata ───────────────────────────────────────────────────────── */
+   ,created_at              TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
+)
+PRIMARY INDEX (lineage_run_id);
+
+COMMENT ON TABLE Observability.lineage_run IS
+'Operational lineage execution log — one row per execution of a declared lineage flow (data_lineage). Tracks run status, volume, duration, and errors. Event-scale volume expected.';
+
+COMMENT ON COLUMN Observability.lineage_run.lineage_run_id IS
+'Surrogate key for lineage run record';
+
+COMMENT ON COLUMN Observability.lineage_run.lineage_id IS
+'Foreign key to data_lineage.lineage_id — links this execution to its declared flow definition';
+
+COMMENT ON COLUMN Observability.lineage_run.run_dts IS
+'Execution timestamp — when the transformation run started';
+
+COMMENT ON COLUMN Observability.lineage_run.run_status IS
+'Execution status — SUCCESS (completed normally), FAILED (aborted), PARTIAL (completed with rejected rows), RUNNING (in progress)';
+
+COMMENT ON COLUMN Observability.lineage_run.run_duration_ms IS
+'Execution duration in milliseconds — wall-clock time from start to completion';
+
+COMMENT ON COLUMN Observability.lineage_run.records_read IS
+'Number of records read from source — input volume metric';
+
+COMMENT ON COLUMN Observability.lineage_run.records_written IS
+'Number of records written to target — output volume metric';
+
+COMMENT ON COLUMN Observability.lineage_run.records_rejected IS
+'Number of records rejected during transformation — validation failures, type mismatches, constraint violations';
+
+COMMENT ON COLUMN Observability.lineage_run.batch_key IS
+'Batch identifier — links to change_event.batch_key for cross-referencing lineage runs with change events in the same ETL cycle';
+
+COMMENT ON COLUMN Observability.lineage_run.job_name IS
+'Job name denormalised from data_lineage — enables fast filtering without joining to the definition table';
+
+COMMENT ON COLUMN Observability.lineage_run.openlineage_run_id IS
+'OpenLineage run UUID — per-execution identifier for correlation with external lineage systems (Marquez, Amundsen)';
+
+COMMENT ON COLUMN Observability.lineage_run.error_message IS
+'Error message captured on FAILED or PARTIAL runs — first 2000 characters of the error for diagnostic triage';
+
+COMMENT ON COLUMN Observability.lineage_run.created_at IS
+'Timestamp when lineage run record was created';
+```
+
+**Example — Logging an execution**:
+```sql
+-- Log each execution (every time the job runs)
+INSERT INTO Observability.lineage_run (
+    lineage_id, run_dts, run_status, run_duration_ms,
+    records_read, records_written, records_rejected,
+    batch_key, job_name
+) VALUES (
+    1,  /* FK to the definition registered in data_lineage */
+    CURRENT_TIMESTAMP(6), 'SUCCESS', 45200,
+    250000, 248500, 1500,
+    'BATCH-2026-04-09-001', 'ETL_PARTY_FEATURES'
+);
+```
+
+**Retention guidance**:
+
+| Table | Retention | Rationale |
+|-------|-----------|-----------|
+| `data_lineage` | Life of data product | Blueprint — always needed for discovery and impact analysis |
+| `lineage_run` | Configurable (90–365 days typical) | Event-scale volume; older runs can be aggregated or archived |
+
+### 3.5 model_performance
 
 ```sql
 CREATE TABLE Observability.model_performance (
@@ -347,7 +491,7 @@ COMMENT ON COLUMN Observability.model_performance.created_at IS
 'Timestamp when performance record was created';
 ```
 
-### 3.5 agent_outcome
+### 3.6 agent_outcome
 
 ```sql
 CREATE TABLE Observability.agent_outcome (
@@ -404,15 +548,379 @@ COMMENT ON COLUMN Observability.agent_outcome.created_at IS
 
 ---
 
-## 4. Open Standards Integration
+## 4. Semantic Views
 
-### 4.1 OpenLineage
+The following views are deployed into the `{ProductName}_Semantic` database to enable agent discovery and graph visualisation of lineage data.
+
+### 4.1 lineage_graph (Graph-Ready Edge List)
+
+Transforms the **definitional** `data_lineage` table into a two-leg edge list (source → job, job → target) compatible with typically used Graph standards. Reads active flows only — no duplicate edges from repeated executions.
+
+```sql
+REPLACE VIEW Semantic.lineage_graph AS
+/*
+ * lineage_graph
+ * ───────────────
+ * Graph-ready edge list for data lineage with ETL jobs surfaced as
+ * first-class nodes. Reads from the DEFINITIONAL data_lineage table
+ * (not the execution log) — produces one stable edge per declared flow.
+ *
+ * Column contract matches the typical Graph standards for direct consumption
+ *
+ * Each data_lineage row becomes two edges:
+ *   Leg 1: source_table  → job_name   (ETL_INPUT)
+ *   Leg 2: job_name      → target_table (ETL_OUTPUT)
+ *
+ * Object types resolved from DBC.TablesV for Table nodes.
+ * Job nodes carry Src_Kind / Tgt_Kind = 'Job'.
+ */
+LOCKING ROW FOR ACCESS
+
+    /* ══════════════════════════════════════════════════════════════
+     *  Leg 1: Source Table → Job (ETL_INPUT)
+     * ══════════════════════════════════════════════════════════════ */
+    SELECT
+         COALESCE(dl.source_database, '') || '.' || dl.source_table  AS Src_Object_Name_FQ
+        ,COALESCE(dl.source_database, '')                            AS Src_Container_Name
+        ,dl.source_table                                             AS Src_Object_Name
+        /* ── Source Object Type from DBC.TablesV ─────────────────── */
+        ,CASE WHEN Src_Obj.TableKind IS NOT NULL
+              THEN CASE Src_Obj.TableKind
+                       WHEN 'T' THEN 'Table'
+                       WHEN 'O' THEN 'No PI Table'
+                       WHEN 'V' THEN 'View'
+                       WHEN 'M' THEN 'Macro'
+                       WHEN 'P' THEN 'Procedure'
+                       WHEN 'E' THEN 'Procedure'
+                       WHEN 'G' THEN 'Trigger'
+                       WHEN 'I' THEN 'Join Index'
+                       WHEN 'A' THEN 'Function'
+                       WHEN 'F' THEN 'Function'
+                       WHEN 'R' THEN 'Function'
+                       WHEN 'B' THEN 'Function'
+                       WHEN 'S' THEN 'Function'
+                       WHEN 'N' THEN 'Hash Index'
+                       WHEN 'K' THEN 'Foreign Server'
+                       WHEN 'X' THEN 'Authorization'
+                       WHEN 'U' THEN 'Type'
+                       WHEN 'C' THEN 'Table Operator'
+                       WHEN 'D' THEN 'JAR'
+                       WHEN 'H' THEN 'Method'
+                       WHEN 'J' THEN 'Journal'
+                       WHEN 'L' THEN 'SQL-MR function - Table Operator'
+                       WHEN 'Q' THEN 'Queue Table'
+                       WHEN 'Y' THEN 'GLOP Set'
+                       WHEN 'Z' THEN 'UIF'
+                       WHEN '1' THEN 'Schema'
+                       WHEN '2' THEN 'Function Alias'
+                       WHEN '3' THEN 'UAF - Unbounded Array Framework'
+                       ELSE 'Unknown: ' || Src_Obj.TableKind
+                   END
+              ELSE 'Unknown'
+         END (VARCHAR(30))                                           AS Src_Kind
+        ,COALESCE(dl.source_database, '') || '.' || dl.source_table
+         || '0A'xc || ' [' || Src_Kind || ']'                        AS Src_Display_Name
+        ,'ETL_INPUT'                                                 AS Edge_Relationship
+        ,dl.transformation_type                                      AS Transformation_Type
+        ,dl.transformation_logic                                     AS Transformation_Logic
+        ,dl.lineage_id                                               AS Lineage_ID
+        /* ── Target is the Job ───────────────────────────────────── */
+        ,dl.job_name                                                 AS Tgt_Object_Name_FQ
+        ,''                                                          AS Tgt_Container_Name
+        ,dl.job_name                                                 AS Tgt_Object_Name
+        ,'Job' (VARCHAR(30))                                         AS Tgt_Kind
+        ,dl.job_name || '0A'xc || ' [' || Tgt_Kind || ']'            AS Tgt_Display_Name
+    FROM
+        Observability.data_lineage AS dl
+    LEFT OUTER JOIN DBC.TablesV AS Src_Obj
+      ON  Src_Obj.DatabaseName = dl.source_database
+      AND Src_Obj.TableName    = dl.source_table
+    WHERE
+        dl.is_active = 1
+
+    UNION ALL
+
+    /* ══════════════════════════════════════════════════════════════
+     *  Leg 2: Job → Target Table (ETL_OUTPUT)
+     * ══════════════════════════════════════════════════════════════ */
+    SELECT
+        dl.job_name                                                  AS Src_Object_Name_FQ
+        ,''                                                          AS Src_Container_Name
+        ,dl.job_name                                                 AS Src_Object_Name
+        ,'Job' (VARCHAR(30))                                         AS Src_Kind
+        ,dl.job_name || '0A'xc || ' [' || Src_Kind || ']'            AS Src_Display_Name
+        ,'ETL_OUTPUT'                                                AS Edge_Relationship
+        ,dl.transformation_type                                      AS Transformation_Type
+        ,dl.transformation_logic                                     AS Transformation_Logic
+        ,dl.lineage_id                                               AS Lineage_ID
+        ,COALESCE(dl.target_database, '') || '.' || dl.target_table  AS Tgt_Object_Name_FQ
+        ,COALESCE(dl.target_database, '')                            AS Tgt_Container_Name
+        ,dl.target_table                                             AS Tgt_Object_Name
+        /* ── Target Object Type from DBC.TablesV ─────────────────── */
+        ,CASE WHEN Tgt_Obj.TableKind IS NOT NULL
+              THEN CASE Tgt_Obj.TableKind
+                       WHEN 'T' THEN 'Table'
+                       WHEN 'O' THEN 'No PI Table'
+                       WHEN 'V' THEN 'View'
+                       WHEN 'M' THEN 'Macro'
+                       WHEN 'P' THEN 'Procedure'
+                       WHEN 'E' THEN 'Procedure'
+                       WHEN 'G' THEN 'Trigger'
+                       WHEN 'I' THEN 'Join Index'
+                       WHEN 'A' THEN 'Function'
+                       WHEN 'F' THEN 'Function'
+                       WHEN 'R' THEN 'Function'
+                       WHEN 'B' THEN 'Function'
+                       WHEN 'S' THEN 'Function'
+                       WHEN 'N' THEN 'Hash Index'
+                       WHEN 'K' THEN 'Foreign Server'
+                       WHEN 'X' THEN 'Authorization'
+                       WHEN 'U' THEN 'Type'
+                       WHEN 'C' THEN 'Table Operator'
+                       WHEN 'D' THEN 'JAR'
+                       WHEN 'H' THEN 'Method'
+                       WHEN 'J' THEN 'Journal'
+                       WHEN 'L' THEN 'SQL-MR function - Table Operator'
+                       WHEN 'Q' THEN 'Queue Table'
+                       WHEN 'Y' THEN 'GLOP Set'
+                       WHEN 'Z' THEN 'UIF'
+                       WHEN '1' THEN 'Schema'
+                       WHEN '2' THEN 'Function Alias'
+                       WHEN '3' THEN 'UAF - Unbounded Array Framework'
+                       ELSE 'Unknown: ' || Tgt_Obj.TableKind
+                   END
+              ELSE 'Unknown'
+         END (VARCHAR(30))                                           AS Tgt_Kind
+        ,COALESCE(dl.target_database, '') || '.' || dl.target_table
+         || '0A'xc || ' [' || Tgt_Kind || ']'                        AS Tgt_Display_Name
+    FROM
+        Observability.data_lineage AS dl
+    LEFT OUTER JOIN DBC.TablesV AS Tgt_Obj
+      ON  Tgt_Obj.DatabaseName = dl.target_database
+      AND Tgt_Obj.TableName    = dl.target_table
+    WHERE
+        dl.is_active = 1
+;
+```
+
+### 4.2 lineage_run_latest (Latest Execution per Flow)
+
+Convenience view joining each active lineage definition to its most recent execution. Useful for dashboards showing "last run status" alongside the blueprint.
+
+```sql
+REPLACE VIEW Semantic.lineage_run_latest AS
+LOCKING ROW FOR ACCESS
+SELECT
+     dl.lineage_id
+    ,dl.source_database
+    ,dl.source_table
+    ,dl.job_name
+    ,dl.target_database
+    ,dl.target_table
+    ,dl.transformation_type
+    ,dl.is_active
+    ,lr.lineage_run_id
+    ,lr.run_dts                AS last_run_dts
+    ,lr.run_status             AS last_run_status
+    ,lr.run_duration_ms        AS last_run_duration_ms
+    ,lr.records_read           AS last_records_read
+    ,lr.records_written        AS last_records_written
+    ,lr.records_rejected       AS last_records_rejected
+    ,lr.error_message          AS last_error_message
+FROM
+    Observability.data_lineage AS dl
+LEFT OUTER JOIN Observability.lineage_run AS lr
+  ON  lr.lineage_id = dl.lineage_id
+  AND lr.run_dts = (
+        SELECT MAX(lr2.run_dts)
+        FROM   Observability.lineage_run AS lr2
+        WHERE  lr2.lineage_id = dl.lineage_id
+      )
+WHERE
+    dl.is_active = 1
+;
+```
+
+---
+
+## 5. Open Standards Integration
+
+### 5.1 OpenLineage
 
 **Reference**: https://openlineage.io/
 
-Store OpenLineage identifiers (run_id, job_name, namespace) to correlate with external lineage systems.
+The lineage tables are designed to align with the OpenLineage specification. The definition/execution split directly mirrors OpenLineage's separation of design-time events (`JobEvent` — static metadata about declared flows) and runtime events (`RunEvent` — per-execution observations).
 
-### 4.2 Data Quality Frameworks
+#### 5.1.1 Entity Mapping
+
+| OpenLineage Entity | Our Table | Key Columns |
+|-------------------|-----------|-------------|
+| **Job** (a process that consumes/produces Datasets) | `data_lineage` | `job_name`, `openlineage_job_name`, `openlineage_namespace` |
+| **Run** (a single execution of a Job) | `lineage_run` | `openlineage_run_id`, `run_dts`, `run_status` |
+| **InputDataset** | `data_lineage` | `source_database`, `source_table` |
+| **OutputDataset** | `data_lineage` | `target_database`, `target_table` |
+
+OpenLineage identifies datasets by `namespace` + `name`. The spec defines the Teradata convention as:
+- **Namespace**: `teradata://{host}:{port}`
+- **Name**: `{database}.{table}`
+
+Our `source_database.source_table` and `target_database.target_table` columns compose directly into the OpenLineage `name` portion. The namespace prefix is environment-specific and should be supplied at event-emission time or stored as configuration.
+
+#### 5.1.2 Column-Level Mapping
+
+**Definitional columns** (`data_lineage` → OpenLineage JobEvent):
+
+| Our Column | OpenLineage Concept |
+|------------|-------------------|
+| `openlineage_namespace` | Job.namespace |
+| `openlineage_job_name` | Job.name |
+| `source_database` + `source_table` | InputDataset.name |
+| `target_database` + `target_table` | OutputDataset.name |
+| `transformation_logic` | `sql` or `sourceCode` facet |
+| `registered_dts` | JobEvent.eventTime |
+
+**Operational columns** (`lineage_run` → OpenLineage RunEvent):
+
+| Our Column | OpenLineage Concept |
+|------------|-------------------|
+| `openlineage_run_id` | Run.runId (UUID) |
+| `run_dts` | RunEvent.eventTime |
+| `run_status` | RunEvent.eventType (SUCCESS→COMPLETE, FAILED→FAIL, RUNNING→START) |
+| `records_read` | InputDataset `inputStatistics` facet (rowCount) |
+| `records_written` | OutputDataset `outputStatistics` facet (rowCount) |
+| `error_message` | Run `errorMessage` facet |
+
+#### 5.1.3 Example: Generating an OpenLineage RunEvent
+
+The following query constructs an OpenLineage-compliant RunEvent JSON payload from the lineage tables, suitable for emission to an OpenLineage-compatible backend (e.g., Marquez, Amundsen, Datadog):
+
+```sql
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Uses Teradata native JSON functions (JSON_COMPOSE, JSON_AGG) for
+ *  proper type handling, automatic escaping, and cleaner SQL.
+ * ────────────────────────────────────────────────────────────────────────── */
+SELECT
+    lr.lineage_run_id
+
+    /* ── Compose the RunEvent as a native JSON object ────────────── */
+   ,JSON_COMPOSE(
+        CAST(lr.run_dts AS VARCHAR(50))                              AS "eventTime"
+       ,CASE lr.run_status
+             WHEN 'SUCCESS' THEN 'COMPLETE'
+             WHEN 'FAILED'  THEN 'FAIL'
+             WHEN 'RUNNING' THEN 'START'
+             WHEN 'PARTIAL' THEN 'COMPLETE'
+             ELSE 'OTHER'
+        END                                                          AS "eventType"
+
+       /* ── Run object ───────────────────────────────────────────── */
+       ,JSON_COMPOSE(
+            COALESCE(lr.openlineage_run_id,
+                     CAST(lr.lineage_run_id AS VARCHAR(36)))         AS "runId"
+        )                                                            AS "run"
+
+       /* ── Job object ───────────────────────────────────────────── */
+       ,JSON_COMPOSE(
+            COALESCE(dl.openlineage_namespace,
+                     'teradata://localhost:1025')                     AS "namespace"
+           ,COALESCE(dl.openlineage_job_name, dl.job_name)           AS "name"
+        )                                                            AS "job"
+
+       /* ── Input dataset (single) ───────────────────────────────── */
+       ,JSON_COMPOSE(
+            'teradata://localhost:1025'                               AS "namespace"
+           ,COALESCE(dl.source_database, '') || '.' || dl.source_table
+                                                                     AS "name"
+           ,lr.records_read                                          AS "rowCount"
+        )                                                            AS "input"
+
+       /* ── Output dataset (single) ──────────────────────────────── */
+       ,JSON_COMPOSE(
+            'teradata://localhost:1025'                               AS "namespace"
+           ,COALESCE(dl.target_database, '') || '.' || dl.target_table
+                                                                     AS "name"
+           ,lr.records_written                                       AS "rowCount"
+        )                                                            AS "output"
+
+       ,'https://teradata.com/ai-native-data-product'                AS "producer"
+       ,'https://openlineage.io/spec/2-0-2/OpenLineage.json#/definitions/RunEvent'
+                                                                     AS "schemaURL"
+    ) AS openlineage_run_event_json
+
+FROM
+    Observability.lineage_run AS lr
+INNER JOIN Observability.data_lineage AS dl
+  ON lr.lineage_id = dl.lineage_id
+WHERE
+    lr.run_dts >= CURRENT_DATE - 1
+;
+```
+
+**Benefits over string concatenation**:
+- ✅ Automatic escaping of special characters (e.g., quotes in `error_message`)
+- ✅ Correct JSON types — integers remain numeric, NULLs are omitted cleanly
+- ✅ Readable, maintainable SQL that mirrors the OpenLineage structure
+
+**Example output**:
+```json
+{
+  "eventTime": "2026-04-09T02:15:33.123456+00:00",
+  "eventType": "COMPLETE",
+  "run": { "runId": "3b452093-782c-4ef2-9c0c-aafe2aa6f34d" },
+  "job": {
+    "namespace": "airflow://prod-scheduler.corp.com",
+    "name": "StGeoMortgage_ETL.ETL_PARTY_FEATURES"
+  },
+  "input": {
+    "namespace": "teradata://tdprod.corp.com:1025",
+    "name": "StGeoMortgage_Domain.Party_H",
+    "rowCount": 250000
+  },
+  "output": {
+    "namespace": "teradata://tdprod.corp.com:1025",
+    "name": "StGeoMortgage_Prediction.customer_features",
+    "rowCount": 248500
+  },
+  "producer": "https://teradata.com/ai-native-data-product",
+  "schemaURL": "https://openlineage.io/spec/2-0-2/OpenLineage.json#/definitions/RunEvent"
+}
+```
+
+#### 5.1.4 Example: Data Freshness from Lineage Runs
+
+OpenLineage consumers compute data freshness from the latest successful RunEvent. The same metric can be derived directly from `lineage_run`:
+
+```sql
+SELECT
+    dl.target_database || '.' || dl.target_table   AS dataset_name
+   ,dl.job_name
+   ,MAX(lr.run_dts)                                AS last_successful_run
+   ,(CURRENT_TIMESTAMP(6) - MAX(lr.run_dts)) HOUR(4) TO MINUTE
+                                                   AS freshness_lag
+   ,CASE
+        WHEN MAX(lr.run_dts) >= CURRENT_TIMESTAMP(6) - INTERVAL '24' HOUR THEN 'FRESH'
+        WHEN MAX(lr.run_dts) >= CURRENT_TIMESTAMP(6) - INTERVAL '48' HOUR THEN 'STALE'
+        ELSE 'CRITICAL'
+    END                                            AS freshness_status
+FROM
+    Observability.data_lineage AS dl
+INNER JOIN Observability.lineage_run AS lr
+  ON lr.lineage_id = dl.lineage_id
+WHERE
+    dl.is_active = 1
+    AND lr.run_status = 'SUCCESS'
+GROUP BY
+    dl.target_database, dl.target_table, dl.job_name
+;
+```
+
+#### 5.1.5 Design Notes
+
+- **Run lifecycle**: OpenLineage expects at least a START and COMPLETE/FAIL event per run. Our tables store a single final-status row per execution, which is a pragmatic trade-off for Teradata efficiency. Full lifecycle tracking can be added if required by extending `lineage_run` to allow multiple rows per `openlineage_run_id`.
+- **Multi-input jobs**: A job with multiple input datasets is represented as multiple `data_lineage` rows sharing the same `job_name`. When constructing OpenLineage events, use `JSON_AGG` to aggregate these into a single event with a JSON array of input datasets.
+- **Custom facets**: Columns such as `transformation_type`, `batch_key`, and `records_rejected` do not have standard OpenLineage facets and should be emitted as custom facets using a project-specific prefix (e.g., `teradata_aiNativeDataProduct_transformationType`).
+
+### 5.2 Data Quality Frameworks
 
 Reference: Great Expectations, Deequ, Monte Carlo
 
@@ -420,9 +928,9 @@ Use standard metric names for consistency.
 
 ---
 
-## 5. Integration with Other Modules
+## 6. Integration with Other Modules
 
-### 5.1 Integration with Domain (Table-Level Change Tracking)
+### 6.1 Integration with Domain (Table-Level Change Tracking)
 
 **Pattern**: Track changes at table level with aggregate metrics
 
@@ -451,7 +959,7 @@ ORDER BY change_dts DESC;
 
 **Benefits**: One event per batch (not millions per record), efficient audit trail
 
-### 5.2 Feed Memory Module (Closed-Loop Learning)
+### 6.2 Feed Memory Module (Closed-Loop Learning)
 
 **Pattern**: Observability outcomes feed Memory learnings
 
@@ -474,7 +982,7 @@ WHERE action_type = 'QUERY'
 HAVING COUNT(*) >= 10;
 ```
 
-### 5.3 Monitor All Modules
+### 6.3 Monitor All Modules
 
 **Track quality and performance across all modules**:
 
@@ -491,44 +999,54 @@ WHERE table_name IN ('Party_H', 'customer_features', 'product_embedding')
   AND measured_dts >= CURRENT_DATE - 7
 GROUP BY database_name, table_name, metric_name;
 
--- Track data lineage across modules
+-- Track lineage execution across modules (uses operational table)
 SELECT 
-    source_database || '.' || source_table AS source,
-    target_database || '.' || target_table AS target,
-    transformation_type,
-    records_written,
-    run_status
-FROM Observability.data_lineage
-WHERE run_dts >= CURRENT_DATE - 1
-ORDER BY run_dts DESC;
+    dl.source_database || '.' || dl.source_table AS source,
+    dl.target_database || '.' || dl.target_table AS target,
+    dl.transformation_type,
+    lr.records_written,
+    lr.run_status
+FROM Observability.lineage_run AS lr
+INNER JOIN Observability.data_lineage AS dl
+  ON lr.lineage_id = dl.lineage_id
+WHERE lr.run_dts >= CURRENT_DATE - 1
+ORDER BY lr.run_dts DESC;
 ```
 
 ---
 
-## 6. Designer Responsibilities
+## 7. Designer Responsibilities
 
-### 6.1 Required Tables
+### 7.1 Required Tables
 
 - change_event
-- data_quality_metric  
+- data_quality_metric
 - data_lineage
+- lineage_run
 - model_performance (if using ML)
 - agent_outcome (if using agents)
 
-### 6.2 Design Checklist
+### 7.2 Required Semantic Views
+
+- lineage_graph (deployed to `{ProductName}_Semantic`)
+- lineage_run_latest (deployed to `{ProductName}_Semantic`)
+
+### 7.3 Design Checklist
 
 - [ ] Quality metrics defined
 - [ ] Quality thresholds set
+- [ ] Lineage flows registered in data_lineage for all declared pipelines
 - [ ] OpenLineage integration configured
-- [ ] Retention policies defined
+- [ ] Retention policies defined (separate policies for data_lineage vs lineage_run)
 - [ ] Integration with Memory configured
+- [ ] lineage_graph and lineage_run_latest views deployed to Semantic
 - [ ] Module_Registry INSERT generated for this module
 - [ ] Min. 3 Design_Decision INSERTs generated
 - [ ] Change_Log initial release entry generated
 - [ ] Min. 3 Business_Glossary terms captured
 - [ ] Min. 1 Query_Cookbook recipe captured
 
-### 6.3 Documentation Capture Requirements
+### 7.4 Documentation Capture Requirements
 
 Every Observability module must populate the Memory database documentation tables as part of its design workflow. The table definitions, workflows, and full protocol are defined in the **Memory Module Design Standard, Section 8**.
 
@@ -549,7 +1067,8 @@ Every Observability module must populate the Memory database documentation table
 | `OPERATIONAL` | Quality threshold values and alerting strategy |
 | `INTEGRATION` | OpenLineage scope — which modules and tables are tracked |
 | `ARCHITECTURE` | Closed-loop feed strategy from agent_outcome into Memory.learned_strategy |
-| `SCHEMA` | Retention policy — how long to keep change events vs quality metrics |
+| `ARCHITECTURE` | Lineage definition/execution split — why two tables |
+| `SCHEMA` | Retention policy — how long to keep change events vs quality metrics vs lineage runs |
 | `PERFORMANCE` | Aggregation window and metric granularity decisions |
 
 **Decision ID prefix for this module:** `DD-OBSERVABILITY-{NNN}` (e.g., `DD-OBSERVABILITY-001`)
@@ -566,9 +1085,16 @@ Every Observability module must populate the Memory database documentation table
 ```
 ✅ change_event           -- Audit trail
 ✅ data_quality_metric    -- Quality metrics
-✅ data_lineage          -- Lineage (OpenLineage)
+✅ data_lineage           -- Lineage definition (blueprint)
+✅ lineage_run            -- Lineage execution (operational log)
 ✅ model_performance      -- Model metrics
 ✅ agent_outcome          -- Agent outcomes
+```
+
+### Semantic Views
+```
+✅ lineage_graph          -- Graph-ready edge list
+✅ lineage_run_latest     -- Latest execution per flow (dashboard-ready)
 ```
 
 ### Key Principles
@@ -576,6 +1102,7 @@ Every Observability module must populate the Memory database documentation table
 ✅ Store events/metrics (NOT data)
 ✅ Table-level change tracking (NOT individual record changes)
 ✅ Aggregate metrics (records_affected count, not individual keys)
+✅ Separate lineage definition from execution (stable graph, event-scale runs)
 ✅ Align with OpenLineage for data lineage
 ✅ Feed Memory module (closed-loop learning)
 ✅ Monitor all modules
@@ -595,6 +1122,7 @@ OpenTelemetry:       Observability
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.5 | 2026-04-09 | Lineage definition/execution split — replaced single data_lineage table with definitional data_lineage (one row per declared flow, with is_active lifecycle) and operational lineage_run (one row per execution, FK to definition). Added Section 1.3 Lineage Separation Principle. Added new Section 4 Semantic Views with lineage_graph (reads definitions only, VARCHAR(30) casts on all Kind columns) and lineage_run_latest views. Updated Section 6.3 Monitor All Modules query to use lineage_run. Updated Required Tables (7.1), added Required Semantic Views (7.2), updated Design Checklist (7.3) and Documentation Capture (7.4). Renumbered sections 4–7 (previously 4–6). | Paul Dancer, Worldwide Data Architecture Team, Teradata |
 | 1.4 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
 | 1.3 | 2026-03-20 | Added Section 6.3 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, and reference to Memory Module Section 8 protocol. Updated Section 6.2 checklist to include documentation capture steps. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.2 | 2026-03-18 | Applied surrogate key naming convention to internal management tables: renamed {table}_key → {table}_id for all GENERATED ALWAYS AS IDENTITY columns | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
@@ -603,4 +1131,3 @@ OpenTelemetry:       Observability
 ---
 
 **End of Observability Module Design Standard**
-
