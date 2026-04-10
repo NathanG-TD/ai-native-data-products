@@ -440,11 +440,6 @@ If yes to all → Agent-discoverable ✅
 ```sql
 CREATE TABLE {EntityName}_H (
     -- Identity (Required)
-    -- NOTE: {entity}_id is NOT GENERATED ALWAYS AS IDENTITY here.
-    -- It is populated via a JOIN to {EntityName}_Keymap (see Section 4.2).
-    -- Placing IDENTITY on the _H table generates a new surrogate on every
-    -- SCD version INSERT, making cross-table FKs unstable. See Advocated
-    -- Data Management Standards Section 4 for full rationale.
     {entity}_id        BIGINT NOT NULL,
     {entity}_key         VARCHAR(50) NOT NULL,
     
@@ -465,7 +460,7 @@ CREATE TABLE {EntityName}_H (
     PRIMARY INDEX ({entity}_id)
 )
 -- NOTE: For temporal tables, use PRIMARY INDEX (not UNIQUE PRIMARY INDEX)
--- because multiple versions of same {entity}_id will exist.
+-- because multiple versions of same entity_id will exist.
 -- Designer defines appropriate index based on temporal strategy chosen.
 -- See Advocated Data Management Standards for detailed guidance.
 
@@ -475,7 +470,7 @@ COMMENT ON TABLE {EntityName}_H IS
 
 -- Column comments (Required for all columns)
 COMMENT ON COLUMN {EntityName}_H.{entity}_id IS 
-'Surrogate key - sourced from {EntityName}_Keymap.{entity}_id. Stable across all SCD versions for the same real-world entity. Never generated directly on this table. Used for all internal joins, foreign key references, and subtype inheritance.';
+'Surrogate key - system generated unique identifier, never reused, used for all internal joins, foreign key references, and subtype inheritance';
 
 COMMENT ON COLUMN {EntityName}_H.{entity}_key IS 
 'Natural business identifier from source system - used for user queries, reports, and external system integration';
@@ -503,56 +498,6 @@ COMMENT ON COLUMN {EntityName}_H.is_deleted IS
 - Current state queries (`is_current = 1`)
 - Exclude deleted records (`is_deleted = 0`)
 - Agent discovery via metadata
-
----
-
-### 4.2 Keymap Pattern (Required for FK-Target Entities)
-
-Every entity whose surrogate key is referenced as a foreign key by any other
-domain table **must** have a companion `{EntityName}_Keymap` table. The IDENTITY
-column lives in the Keymap — never on the `_H` table.
-
-See Advocated Data Management Standards Section 4 for full rationale, the
-child entity exemption rule, and the decision tree.
-
-```sql
--- {EntityName}_Keymap: one row per unique real-world entity
-CREATE TABLE {ProductName}_Domain.{EntityName}_Keymap (
-    {entity}_id   BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
-    {entity}_key  VARCHAR(50) CHARACTER SET LATIN NOT CASESPECIFIC NOT NULL,
-    source_system VARCHAR(50) CHARACTER SET LATIN NOT CASESPECIFIC,
-    created_dts   TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
-)
-UNIQUE PRIMARY INDEX ({entity}_key);
-
-COMMENT ON TABLE {ProductName}_Domain.{EntityName}_Keymap IS
-'Keymap: one row per unique {entity}. IDENTITY surrogate generated here and
-referenced by {EntityName}_H and all cross-domain FK columns pointing to this entity.';
-COMMENT ON COLUMN {ProductName}_Domain.{EntityName}_Keymap.{entity}_id IS
-'Surrogate key — generated exactly once per real-world entity; stable across all SCD versions.';
-COMMENT ON COLUMN {ProductName}_Domain.{EntityName}_Keymap.{entity}_key IS
-'Natural business key from source system — join key to the Keymap.';
-```
-
-**Two-step load pattern (mandatory when using Keymap):**
-
-```sql
--- Step 1: Register new natural keys (idempotent)
-INSERT INTO {ProductName}_Domain.{EntityName}_Keymap ({entity}_key, source_system)
-SELECT DISTINCT TRIM(s.NATURAL_KEY), 'SOURCE_SYSTEM'
-FROM {source_table} s
-WHERE NOT EXISTS (
-    SELECT 1 FROM {ProductName}_Domain.{EntityName}_Keymap k
-    WHERE k.{entity}_key = TRIM(s.NATURAL_KEY)
-);
-
--- Step 2: Populate _H via JOIN to Keymap
-INSERT INTO {ProductName}_Domain.{EntityName}_H ({entity}_id, {entity}_key, ...)
-SELECT k.{entity}_id, TRIM(s.NATURAL_KEY), ...
-FROM {source_table}                              s
-JOIN {ProductName}_Domain.{EntityName}_Keymap   k
-    ON k.{entity}_key = TRIM(s.NATURAL_KEY);
-```
 
 ### 4.2 Reference Data Pattern
 
@@ -891,7 +836,6 @@ SELECT * FROM Product_Current WHERE product_key = 'SKU-456';
 
 - [ ] Follows standard naming conventions (Section 3)
 - [ ] Has required identity columns ({entity}_id, {entity}_key)
-- [ ] FK-target entities have a companion {EntityName}_Keymap table (IDENTITY on Keymap, not on _H)
 - [ ] Has temporal tracking that supports point-in-time reconstruction
 - [ ] Has is_current and is_deleted indicators
 - [ ] All columns have COMMENT metadata
@@ -1026,7 +970,6 @@ party_id BIGINT, product_id BIGINT
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
-| 2.4 | 2026-04-10 | Section 4 updated to address surrogate key instability in SCD Type 2 tables (issue #7). Section 4.1: added note that {entity}_id is NOT GENERATED ALWAYS AS IDENTITY on the _H table; updated COMMENT ON COLUMN for {entity}_id to reflect keymap sourcing. Added Section 4.2 (Keymap Pattern): Keymap DDL template, two-step load pattern, and cross-entity FK convention. The child entity exemption rule and decision tree are documented in Advocated Data Management Standards Section 4.4-4.5. Design checklist updated with keymap check. | Nathan Goodman, Worldwide Data Architecture Team, Teradata |
 | 2.3 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
 | 2.2 | 2026-03-20 | Added Section 8.5 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, and reference to Memory Module Section 8 protocol. Updated Section 8.4 checklist to include documentation capture steps. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 2.1 | 2026-03-16 | Swapped {entity}_id and {entity}_key roles: Since {entity}_id is already defined in iDM as the integration key, designating {entity}_key as the natural business key from the source system resolves conflicts regarding the inheritance of the iDM primary key. | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
