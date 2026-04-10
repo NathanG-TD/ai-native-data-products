@@ -395,24 +395,30 @@ Observability.DataQuality_H    -- Quality time-series
 | **Universality** | Works for all entity types |
 | **Cross-module** | Consistent FK pattern |
 
-### 4.2 The Keymap Problem: Why IDENTITY on History Tables Fails
+### 4.2 Surrogate Key Stability in History Tables
 
-**Critical issue with SCD Type 2 tables**: Placing `GENERATED ALWAYS AS IDENTITY`
-directly on a history table (`_H`) generates a new surrogate key on every INSERT,
-including every SCD version update. This means a single real-world entity accumulates
-multiple surrogate values across its history rows.
+In SCD Type 2 history tables, multiple rows exist for the same real-world entity —
+one row per version. It is therefore best practice to **allocate surrogate keys
+separately from the history table itself**, so that the same surrogate value is
+consistently used across all versions of an entity.
+
+This matters because other tables — transaction history, product holdings, prediction
+outputs, cross-module joins — hold FK references to the entity's surrogate. If the
+surrogate changes between versions, those FK references become ambiguous: which
+version's value should be stored?
 
 ```
-Example: Customer 'CUST-12345' with 3 SCD versions
+Illustrative example: Customer 'CUST-12345' with 3 SCD versions
   Version 1 → party_id = 1
-  Version 2 → party_id = 47     ← NEW surrogate generated on version insert!
-  Version 3 → party_id = 203    ← NEW surrogate generated again!
+  Version 2 → party_id = 1   ← same surrogate (correct — separate allocation)
+  Version 3 → party_id = 1   ← same surrogate (correct — separate allocation)
+
+  A transaction table holding party_id = 1 unambiguously identifies the customer
+  regardless of which version is current.
 ```
 
-**Consequence**: Any table holding a FK to `party_id` (e.g. transaction history,
-product holdings, predictions) cannot maintain a stable reference — it would need
-to know which version's surrogate to use. Cross-module joins become ambiguous and
-unreliable.
+When surrogate allocation is managed separately, cross-module FK joins are stable
+and unambiguous regardless of how many SCD versions exist for an entity.
 
 ### 4.3 Recommended Approach: The Keymap Pattern
 
@@ -533,8 +539,8 @@ Product (FK target of Order)         Detail/child entities with no FK dependants
 ```
 
 **Rule**: Does any other table hold a FK column pointing to this entity's surrogate?
-- YES → Surrogate allocation strategy required; IDENTITY directly on `_H` is not suitable
-- NO  → Simple IDENTITY on `_H` is acceptable
+- YES → A surrogate allocation strategy is recommended to ensure FK stability across SCD versions
+- NO  → Simple IDENTITY on `_H` is sufficient
 
 ### 4.5 Surrogate Key Allocation Decision Tree
 

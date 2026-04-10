@@ -440,14 +440,13 @@ If yes to all → Agent-discoverable ✅
 ```sql
 CREATE TABLE {EntityName}_H (
     -- Identity (Required)
-    -- {entity}_id must be stable across all SCD versions — a new surrogate
-    -- must not be generated on every version INSERT. Designers should apply
-    -- their organisation's existing surrogate key allocation standard, or adopt
-    -- the Keymap pattern recommended in Advocated Data Management Standards
-    -- Section 4. GENERATED ALWAYS AS IDENTITY directly on this table is not
-    -- appropriate for FK-target entities (it fires on every INSERT, including
-    -- every SCD version, producing a different surrogate for the same entity).
-    -- Reference and lookup tables that are not FK targets may use IDENTITY here.
+    -- Best practice: for entities that are FK targets, manage surrogate key
+    -- allocation separately from this table so that the same surrogate value
+    -- is used consistently across all SCD versions. Apply your organisation's
+    -- existing surrogate key allocation standard, or adopt the Keymap pattern
+    -- recommended in Advocated Data Management Standards Section 4.
+    -- Reference and lookup tables, and entities that are not FK targets,
+    -- may allocate surrogates directly on this table.
     {entity}_id        BIGINT NOT NULL,
     {entity}_key         VARCHAR(50) NOT NULL,
     
@@ -478,7 +477,7 @@ COMMENT ON TABLE {EntityName}_H IS
 
 -- Column comments (Required for all columns)
 COMMENT ON COLUMN {EntityName}_H.{entity}_id IS 
-'Surrogate key - stable across all SCD versions for the same real-world entity. Allocated via surrogate key allocation strategy (see Advocated Data Management Standards Section 4 for the recommended Keymap pattern, or apply organisational standard). For FK-target entities, not generated directly on this table.';
+'Surrogate key - stable across all SCD versions for the same real-world entity. Allocated via surrogate key allocation strategy (see Advocated Data Management Standards Section 4 for the recommended Keymap pattern, or apply organisational standard).';
 
 COMMENT ON COLUMN {EntityName}_H.{entity}_key IS 
 'Natural business identifier from source system - used for user queries, reports, and external system integration';
@@ -507,14 +506,14 @@ COMMENT ON COLUMN {EntityName}_H.is_deleted IS
 - Exclude deleted records (`is_deleted = 0`)
 - Agent discovery via metadata
 
-**Surrogate key allocation**: For entities that are referenced as FK targets by other
-tables, `{entity}_id` must be stable across all SCD versions — a surrogate key
-allocation strategy is required. Designers should apply their organisation's existing
-standard where one exists; the **Keymap pattern** documented in **Advocated Data
-Management Standards Section 4** is the recommended approach if no organisational
-standard is in place. Reference and lookup tables, and detail entities not FK-referenced
-by other tables, may use `GENERATED ALWAYS AS IDENTITY` directly — see Advocated
-Standards Section 4.4 for the decision rule.
+**Surrogate key allocation**: Best practice for entities used as FK targets is to
+manage surrogate key allocation separately from the history table, so that the same
+surrogate value is consistently used across all SCD versions of an entity. Designers
+should apply their organisation's existing standard where one exists; the **Keymap
+pattern** documented in **Advocated Data Management Standards Section 4** is the
+recommended approach if no organisational standard is in place. Reference and lookup
+tables, and detail entities not referenced as FK targets, may allocate surrogates
+directly — see Advocated Standards Section 4.4 for the decision rule.
 
 ### 4.2 Reference Data Pattern
 

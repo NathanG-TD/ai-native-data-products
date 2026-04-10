@@ -142,7 +142,7 @@ no module-specific content. Target: 100–150 lines. Hard limit: 175 lines.
 
 5. **Universal conventions** — applied in every module, stated once here:
    - Boolean columns: `BYTEINT NOT NULL DEFAULT 1/0`, `is_` prefix, filter `= 1/0`
-   - Surrogate keys in **Domain module** `_H` tables (FK-target entities): `BIGINT NOT NULL` — surrogate must be stable across SCD versions; apply the organisation's existing key allocation standard or the Keymap pattern recommended in Advocated Data Management Standards Section 4. IDENTITY directly on `_H` is not appropriate for these tables (it fires on every SCD version INSERT). Reference/lookup tables and detail entities not FK-referenced may use IDENTITY directly.
+   - Surrogate keys in **Domain module** `_H` tables (FK-target entities): `BIGINT NOT NULL` — best practice is to manage surrogate allocation separately from the history table so that the same surrogate is used consistently across all SCD versions. Apply the organisation's existing key allocation standard, or the Keymap pattern recommended in Advocated Data Management Standards Section 4. Reference/lookup tables and detail entities not FK-referenced may allocate surrogates directly (see Advocated Standards Section 4.4 for the decision rule).
    - Surrogate keys in **all other modules** (Semantic, Memory, Observability, Search, Prediction): `BIGINT GENERATED ALWAYS AS IDENTITY` or `INTEGER GENERATED ALWAYS AS IDENTITY` — these are internal management tables, not SCD history tables, so IDENTITY is correct.
    - Natural/business keys: `{entity}_key VARCHAR` or appropriate type
    - Timestamps: `TIMESTAMP(6) WITH TIME ZONE`
