@@ -440,10 +440,14 @@ If yes to all → Agent-discoverable ✅
 ```sql
 CREATE TABLE {EntityName}_H (
     -- Identity (Required)
-    -- NOTE: {entity}_id must NOT use GENERATED ALWAYS AS IDENTITY.
-    -- The surrogate is allocated via the Keymap pattern and populated
-    -- by JOIN on load. See Advocated Data Management Standards Section 4
-    -- for the full surrogate key allocation strategy.
+    -- {entity}_id must be stable across all SCD versions — a new surrogate
+    -- must not be generated on every version INSERT. Designers should apply
+    -- their organisation's existing surrogate key allocation standard, or adopt
+    -- the Keymap pattern recommended in Advocated Data Management Standards
+    -- Section 4. GENERATED ALWAYS AS IDENTITY directly on this table is not
+    -- appropriate for FK-target entities (it fires on every INSERT, including
+    -- every SCD version, producing a different surrogate for the same entity).
+    -- Reference and lookup tables that are not FK targets may use IDENTITY here.
     {entity}_id        BIGINT NOT NULL,
     {entity}_key         VARCHAR(50) NOT NULL,
     
@@ -474,7 +478,7 @@ COMMENT ON TABLE {EntityName}_H IS
 
 -- Column comments (Required for all columns)
 COMMENT ON COLUMN {EntityName}_H.{entity}_id IS 
-'Surrogate key - sourced from {EntityName}_Keymap.{entity}_id; stable across all SCD versions for the same real-world entity. Never generated directly on this table. See Advocated Data Management Standards Section 4 for surrogate key allocation strategy.';
+'Surrogate key - stable across all SCD versions for the same real-world entity. Allocated via surrogate key allocation strategy (see Advocated Data Management Standards Section 4 for the recommended Keymap pattern, or apply organisational standard). For FK-target entities, not generated directly on this table.';
 
 COMMENT ON COLUMN {EntityName}_H.{entity}_key IS 
 'Natural business identifier from source system - used for user queries, reports, and external system integration';
@@ -503,13 +507,14 @@ COMMENT ON COLUMN {EntityName}_H.is_deleted IS
 - Exclude deleted records (`is_deleted = 0`)
 - Agent discovery via metadata
 
-**Surrogate key allocation**: The `{entity}_id` surrogate must be allocated via the
-**Keymap pattern** documented in **Advocated Data Management Standards Section 4**.
-In summary: a companion `{EntityName}_Keymap` table holds `GENERATED ALWAYS AS IDENTITY`
-and fires exactly once per natural key; `{EntityName}_H` receives the stable surrogate
-via a JOIN on load. Entities whose surrogate is not referenced as a FK by other tables
-are exempt from the Keymap requirement — see Advocated Standards Section 4.4 for the
-decision rule.
+**Surrogate key allocation**: For entities that are referenced as FK targets by other
+tables, `{entity}_id` must be stable across all SCD versions — a surrogate key
+allocation strategy is required. Designers should apply their organisation's existing
+standard where one exists; the **Keymap pattern** documented in **Advocated Data
+Management Standards Section 4** is the recommended approach if no organisational
+standard is in place. Reference and lookup tables, and detail entities not FK-referenced
+by other tables, may use `GENERATED ALWAYS AS IDENTITY` directly — see Advocated
+Standards Section 4.4 for the decision rule.
 
 ### 4.2 Reference Data Pattern
 
@@ -848,7 +853,7 @@ SELECT * FROM Product_Current WHERE product_key = 'SKU-456';
 
 - [ ] Follows standard naming conventions (Section 3)
 - [ ] Has required identity columns ({entity}_id, {entity}_key)
-- [ ] {entity}_id is NOT GENERATED ALWAYS AS IDENTITY (surrogate allocated via Keymap pattern per Advocated Data Management Standards Section 4)
+- [ ] **Surrogate key allocation strategy defined**: For FK-target entities, how will `{entity}_id` be kept stable across SCD versions? Options: (a) Keymap pattern (see Advocated Data Management Standards Section 4), (b) organisation's existing central key allocation standard, (c) database sequence with natural key constraint. Reference/lookup tables and detail entities not FK-referenced may use IDENTITY directly. Document the chosen approach.
 - [ ] Has temporal tracking that supports point-in-time reconstruction
 - [ ] Has is_current and is_deleted indicators
 - [ ] All columns have COMMENT metadata

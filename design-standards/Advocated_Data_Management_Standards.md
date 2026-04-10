@@ -414,17 +414,23 @@ product holdings, predictions) cannot maintain a stable reference — it would n
 to know which version's surrogate to use. Cross-module joins become ambiguous and
 unreliable.
 
-### 4.3 Advocated Surrogate Key Pattern: The Keymap
+### 4.3 Recommended Approach: The Keymap Pattern
 
-**Advocated**: A separate `{Entity}_Keymap` table where IDENTITY fires exactly once
-per unique natural key. History tables hold the stable surrogate as a plain BIGINT,
-populated via a JOIN to the keymap on load.
+The Keymap pattern is the approach recommended in this document. If your organisation
+already has an established surrogate key allocation strategy — such as a central
+sequence service, a UUID generator, or an enterprise key management framework — that
+existing standard should be used in preference to the Keymap pattern described here.
+The requirement from the Domain Module Design Standard is simply that surrogate keys
+are **stable across SCD versions**; the mechanism for achieving that stability is a
+designer choice.
+
+If adopting the Keymap pattern, the following templates apply.
 
 #### Keymap Table DDL
 
 ```sql
 -- One row per unique real-world entity.
--- IDENTITY lives HERE ONLY — fires once per natural key.
+-- IDENTITY fires here once per natural key — never on the _H table.
 CREATE TABLE {ProductName}_Domain.{Entity}_Keymap (
     {entity}_id   BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     {entity}_key  VARCHAR(50) CHARACTER SET LATIN NOT CASESPECIFIC NOT NULL,
@@ -444,13 +450,14 @@ COMMENT ON COLUMN {ProductName}_Domain.{Entity}_Keymap.{entity}_key IS
 'Natural business key from the source system - used to look up the stable surrogate.';
 ```
 
-#### History Table DDL (no IDENTITY)
+#### History Table DDL
 
 ```sql
--- {entity}_id is BIGINT NOT NULL — populated from the keymap via JOIN.
+-- {entity}_id is BIGINT NOT NULL — populated from the keymap (or equivalent
+-- allocation mechanism) via JOIN. Never generated directly on this table.
 -- Multiple rows with the same {entity}_id will exist (one per SCD version).
--- PRIMARY INDEX (non-unique) co-locates all versions of the same entity on
--- the same AMP, making expire-and-insert SCD operations efficient.
+-- PRIMARY INDEX (non-unique) co-locates all versions on the same AMP,
+-- making expire-and-insert SCD operations efficient.
 CREATE TABLE {ProductName}_Domain.{Entity}_H (
     {entity}_id   BIGINT NOT NULL,         -- from Keymap — stable across versions
     {entity}_key  VARCHAR(50) NOT NULL,    -- natural key repeated for convenience
@@ -459,11 +466,12 @@ CREATE TABLE {ProductName}_Domain.{Entity}_H (
 );
 
 COMMENT ON COLUMN {ProductName}_Domain.{Entity}_H.{entity}_id IS
-'Surrogate key - sourced from {Entity}_Keymap.{entity}_id. Same value across all
-SCD versions for the same real-world entity. Never generated here directly.';
+'Surrogate key - allocated via surrogate key allocation strategy (see Advocated
+Data Management Standards Section 4). Stable across all SCD versions for the
+same real-world entity. Never generated directly on this table.';
 ```
 
-#### Two-Step Load Pattern
+#### Two-Step Load Pattern (Keymap approach)
 
 ```sql
 -- Step 1: Register any new natural keys (idempotent — WHERE NOT EXISTS)
@@ -492,64 +500,57 @@ JOIN {ProductName}_Domain.{Entity}_Keymap        k
 
 #### Cross-Entity Foreign Keys
 
-All FK references between domain entities **must point to the Keymap surrogate**,
-not to a row in the `_H` table. This ensures FK joins are always unambiguous
-regardless of which SCD version is current.
+Regardless of the surrogate key allocation mechanism chosen, all FK references
+between domain entities should point to the **stable surrogate**, not to a specific
+row in the `_H` table, to ensure FK joins are unambiguous across SCD versions.
 
 ```sql
--- FK columns in other entities reference the Keymap surrogate
+-- FK columns in other entities reference the stable surrogate
 CREATE TABLE {ProductName}_Domain.Order_H (
     order_id    BIGINT NOT NULL,
-    party_id    BIGINT,     -- FK to Party_Keymap.party_id (stable)
-    product_id  BIGINT,     -- FK to Product_Keymap.product_id (stable)
+    party_id    BIGINT,     -- FK to Party stable surrogate (e.g. via Party_Keymap)
+    product_id  BIGINT,     -- FK to Product stable surrogate
     -- ...
 );
-
--- Query: join keymap to reach the current _H row
-SELECT o.order_id, p.legal_name
-FROM   {ProductName}_Domain.Order_H       o
-JOIN   {ProductName}_Domain.Party_Keymap  pk ON pk.party_id  = o.party_id
-JOIN   {ProductName}_Domain.Party_H       p  ON p.{entity}_id = pk.party_id
-                                            AND p.is_current  = 1
-                                            AND p.is_deleted  = 0;
 ```
 
-### 4.4 Child Entity Exemption
+### 4.4 Reference and Lookup Table Exemption
 
-The keymap requirement applies only to entities whose surrogate key is
-**referenced as a foreign key by other tables**. Child entities that carry an FK
-pointing *up* to a parent keymap, but are never themselves FK-referenced, do not
-require their own keymap.
+The surrogate key stability requirement applies to entities whose surrogate is
+**referenced as a foreign key by other tables**. Reference and lookup tables, as
+well as detail/child entities that are never themselves FK-referenced, do not need a
+separate allocation mechanism — a simple IDENTITY column directly on the `_H` table
+is sufficient, since no external table holds a reference to their surrogate across
+SCD versions.
 
 ```
-Keymap required                    Keymap NOT required (child entities)
--------------------------------    ----------------------------------------
-Party   (FK target of Order)       CustomerContact  (nothing FKs to contact_id)
-Order   (FK target of LineItem)    CustomerAddress  (nothing FKs to address_id)
-Product (FK target of Order)       PropertyRisk     (nothing FKs to risk_id)
+Stable allocation required           Simple IDENTITY on _H acceptable
+----------------------------------   ------------------------------------------
+Party   (FK target of Order)         Reference tables  (e.g. LoanPurpose_R)
+Order   (FK target of LineItem)      Lookup tables     (e.g. StatusCode_R)
+Product (FK target of Order)         Detail/child entities with no FK dependants
+                                     (e.g. CustomerContact, PropertyRisk)
 ```
 
 **Rule**: Does any other table hold a FK column pointing to this entity's surrogate?
-- YES → Keymap required; IDENTITY on `_H` must NOT be used
-- NO  → Child entity; IDENTITY directly on `_H` is acceptable
-
-For child entities, `GENERATED ALWAYS AS IDENTITY` on `_H` is safe because no
-external table attempts to hold a stable reference to that surrogate across SCD versions.
+- YES → Surrogate allocation strategy required; IDENTITY directly on `_H` is not suitable
+- NO  → Simple IDENTITY on `_H` is acceptable
 
 ### 4.5 Surrogate Key Allocation Decision Tree
 
 ```
 START: Is this entity's surrogate referenced as a FK by any other table?
 |
-+-- YES --> Use KEYMAP PATTERN (Advocated)
-|           - Create {Entity}_Keymap with IDENTITY, UNIQUE PI on natural key
-|           - {Entity}_H.{entity}_id = BIGINT NOT NULL (populated via keymap JOIN)
-|           - All FK columns in other tables point to the Keymap surrogate
-|           - Use two-step idempotent load pattern
++-- YES --> Surrogate allocation strategy required
+|           Options (choose one):
+|           a) Keymap pattern (recommended in this document)
+|           b) Organisation's existing central key allocation standard
+|           c) Database sequence with natural key constraint on _H
+|           Key principle: the surrogate must be stable across SCD versions
 |
-+-- NO  --> Child entity: IDENTITY on _H is acceptable
++-- NO  --> Reference/lookup table or detail entity: IDENTITY on _H is acceptable
             - {entity}_id = BIGINT GENERATED ALWAYS AS IDENTITY on _H
-            - Single-step INSERT; no prior keymap step needed
+            - Single-step INSERT; no prior allocation step needed
             - Document explicitly that this entity is not a FK target
 ```
 
@@ -1579,7 +1580,7 @@ START: What is table volume?
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
-| 1.4 | 2026-04-10 | Section 4 (Surrogate Key Strategy) rewritten to address surrogate key instability in SCD Type 2 tables (issue #7). Added Section 4.2 explaining why IDENTITY on _H tables fails; Section 4.3 introducing the Keymap pattern with DDL templates, two-step idempotent load pattern, and cross-entity FK convention; Section 4.4 defining the child entity exemption rule; Section 4.5 providing a decision tree. Removed the previous Sections 4.2-4.3 which incorrectly advocated IDENTITY on _H tables. Previous Section 4.4 renumbered to 4.6. | Nathan Green, Worldwide Data Architecture Team, Teradata |
+| 1.4 | 2026-04-10 | Section 4 (Surrogate Key Strategy) rewritten to address surrogate key instability in SCD Type 2 tables (issue #7). Added Section 4.2 explaining why IDENTITY on _H tables fails; Section 4.3 documenting the recommended Keymap pattern (with flexibility note that organisations should use their own standard if one exists); Section 4.4 (Reference and Lookup Table Exemption) clarifying that reference/lookup tables and detail entities not FK-referenced may use IDENTITY directly; Section 4.5 providing a decision tree with three allocation options; Section 4.6 (natural keys, renamed from old 4.4). Removed old Sections 4.2-4.3 which incorrectly advocated IDENTITY on _H tables. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.3 | 2026-03-20 | Completed swap of id and key to be consistent throughout design standards | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.2 | 2026-03-18 | Renamed is_current_version → is_current throughout, aligned with Domain Module Design Standard naming convention | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2026-03-17 | Updated naming convention throughout: {entity}_id = Surrogate Key (BIGINT), {entity}_key = Natural Business Key (VARCHAR), aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
