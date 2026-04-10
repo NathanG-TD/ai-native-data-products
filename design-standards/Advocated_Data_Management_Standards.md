@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.2 |
+| **Version** | 1.4 |
 | **Status** | GUIDANCE |
-| **Last Updated** | 2026-03-18 |
+| **Last Updated** | 2026-04-10 |
 | **Owner** | Data Architecture |
 | **Scope** | Cross-Module Data Management Guidance |
 | **Type** | Recommended Practices |
@@ -395,53 +395,165 @@ Observability.DataQuality_H    -- Quality time-series
 | **Universality** | Works for all entity types |
 | **Cross-module** | Consistent FK pattern |
 
-### 4.2 Advocated Surrogate Key Pattern
+### 4.2 The Keymap Problem: Why IDENTITY on History Tables Fails
 
-```sql
-CREATE TABLE Party_H (
-    -- Surrogate key (advocated)
-    party_id           BIGINT NOT NULL
-        COMMENT 'System-generated unique identifier, never reused',
-    
-    -- Natural key (still required for business access)
-    party_key           VARCHAR(50) NOT NULL
-        COMMENT 'Natural business key from source system',
-    
-    -- ... other columns ...
-    
-    PRIMARY INDEX (party_id)  -- PI on surrogate key
-)
-UNIQUE PRIMARY INDEX (party_id, valid_from_dts, transaction_from_dts);
+**Critical issue with SCD Type 2 tables**: Placing `GENERATED ALWAYS AS IDENTITY`
+directly on a history table (`_H`) generates a new surrogate key on every INSERT,
+including every SCD version update. This means a single real-world entity accumulates
+multiple surrogate values across its history rows.
 
--- Secondary index on natural key for lookups
-CREATE UNIQUE INDEX idx_party_natural_key
-ON Party_H (party_key)
-WHERE is_current = 1 AND is_deleted = 0;
+```
+Example: Customer 'CUST-12345' with 3 SCD versions
+  Version 1 → party_id = 1
+  Version 2 → party_id = 47     ← NEW surrogate generated on version insert!
+  Version 3 → party_id = 203    ← NEW surrogate generated again!
 ```
 
-### 4.3 Surrogate Key Generation
+**Consequence**: Any table holding a FK to `party_id` (e.g. transaction history,
+product holdings, predictions) cannot maintain a stable reference — it would need
+to know which version's surrogate to use. Cross-module joins become ambiguous and
+unreliable.
 
-**Advocated**: Use database sequence or identity column
+### 4.3 Advocated Surrogate Key Pattern: The Keymap
+
+**Advocated**: A separate `{Entity}_Keymap` table where IDENTITY fires exactly once
+per unique natural key. History tables hold the stable surrogate as a plain BIGINT,
+populated via a JOIN to the keymap on load.
+
+#### Keymap Table DDL
 
 ```sql
--- Option 1: Teradata IDENTITY column (recommended)
-CREATE TABLE Party_H (
-    party_id BIGINT GENERATED ALWAYS AS IDENTITY 
-        (START WITH 1 INCREMENT BY 1) NOT NULL,
-    -- ... other columns ...
+-- One row per unique real-world entity.
+-- IDENTITY lives HERE ONLY — fires once per natural key.
+CREATE TABLE {ProductName}_Domain.{Entity}_Keymap (
+    {entity}_id   BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    {entity}_key  VARCHAR(50) CHARACTER SET LATIN NOT CASESPECIFIC NOT NULL,
+    source_system VARCHAR(50) CHARACTER SET LATIN NOT CASESPECIFIC,
+    created_dts   TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
+)
+UNIQUE PRIMARY INDEX ({entity}_key);  -- UNIQUE PI: one row per natural key
+
+COMMENT ON TABLE {ProductName}_Domain.{Entity}_Keymap IS
+'Keymap: one row per unique {entity}. Surrogate key (IDENTITY) generated here
+and referenced by {Entity}_H and all cross-domain FK columns. Natural key is
+{entity}_key from the source system.';
+COMMENT ON COLUMN {ProductName}_Domain.{Entity}_Keymap.{entity}_id IS
+'Surrogate key - generated exactly once per real-world entity. Stable across
+all SCD versions in {Entity}_H and across all modules that reference this entity.';
+COMMENT ON COLUMN {ProductName}_Domain.{Entity}_Keymap.{entity}_key IS
+'Natural business key from the source system - used to look up the stable surrogate.';
+```
+
+#### History Table DDL (no IDENTITY)
+
+```sql
+-- {entity}_id is BIGINT NOT NULL — populated from the keymap via JOIN.
+-- Multiple rows with the same {entity}_id will exist (one per SCD version).
+-- PRIMARY INDEX (non-unique) co-locates all versions of the same entity on
+-- the same AMP, making expire-and-insert SCD operations efficient.
+CREATE TABLE {ProductName}_Domain.{Entity}_H (
+    {entity}_id   BIGINT NOT NULL,         -- from Keymap — stable across versions
+    {entity}_key  VARCHAR(50) NOT NULL,    -- natural key repeated for convenience
+    -- ... temporal and business columns ...
+    PRIMARY INDEX ({entity}_id)            -- NUPI: multiple versions allowed
 );
 
--- Option 2: Sequence (more flexible)
-CREATE SEQUENCE party_id_seq 
-    START WITH 1 
-    INCREMENT BY 1 
-    NO CYCLE;
-
-INSERT INTO Party_H (party_id, party_key, ...)
-VALUES (party_id_seq.NEXTVAL, 'CUST-12345', ...);
+COMMENT ON COLUMN {ProductName}_Domain.{Entity}_H.{entity}_id IS
+'Surrogate key - sourced from {Entity}_Keymap.{entity}_id. Same value across all
+SCD versions for the same real-world entity. Never generated here directly.';
 ```
 
-### 4.4 When Natural Keys Are Acceptable
+#### Two-Step Load Pattern
+
+```sql
+-- Step 1: Register any new natural keys (idempotent — WHERE NOT EXISTS)
+INSERT INTO {ProductName}_Domain.{Entity}_Keymap ({entity}_key, source_system)
+SELECT DISTINCT TRIM(s.NATURAL_KEY_COLUMN), 'SOURCE_SYSTEM_NAME'
+FROM {source_table} s
+WHERE NOT EXISTS (
+    SELECT 1 FROM {ProductName}_Domain.{Entity}_Keymap k
+    WHERE k.{entity}_key = TRIM(s.NATURAL_KEY_COLUMN)
+);
+
+-- Step 2: Populate history table using keymap JOIN
+INSERT INTO {ProductName}_Domain.{Entity}_H (
+    {entity}_id, {entity}_key, /* business columns */,
+    valid_from_dts, valid_to_dts, is_current, is_deleted
+)
+SELECT
+    k.{entity}_id,               -- stable surrogate from keymap
+    TRIM(s.NATURAL_KEY_COLUMN),
+    /* business columns */,
+    CURRENT_TIMESTAMP(6), TIMESTAMP '9999-12-31 23:59:59.999999+00:00', 1, 0
+FROM {source_table}                              s
+JOIN {ProductName}_Domain.{Entity}_Keymap        k
+    ON k.{entity}_key = TRIM(s.NATURAL_KEY_COLUMN);
+```
+
+#### Cross-Entity Foreign Keys
+
+All FK references between domain entities **must point to the Keymap surrogate**,
+not to a row in the `_H` table. This ensures FK joins are always unambiguous
+regardless of which SCD version is current.
+
+```sql
+-- FK columns in other entities reference the Keymap surrogate
+CREATE TABLE {ProductName}_Domain.Order_H (
+    order_id    BIGINT NOT NULL,
+    party_id    BIGINT,     -- FK to Party_Keymap.party_id (stable)
+    product_id  BIGINT,     -- FK to Product_Keymap.product_id (stable)
+    -- ...
+);
+
+-- Query: join keymap to reach the current _H row
+SELECT o.order_id, p.legal_name
+FROM   {ProductName}_Domain.Order_H       o
+JOIN   {ProductName}_Domain.Party_Keymap  pk ON pk.party_id  = o.party_id
+JOIN   {ProductName}_Domain.Party_H       p  ON p.{entity}_id = pk.party_id
+                                            AND p.is_current  = 1
+                                            AND p.is_deleted  = 0;
+```
+
+### 4.4 Child Entity Exemption
+
+The keymap requirement applies only to entities whose surrogate key is
+**referenced as a foreign key by other tables**. Child entities that carry an FK
+pointing *up* to a parent keymap, but are never themselves FK-referenced, do not
+require their own keymap.
+
+```
+Keymap required                    Keymap NOT required (child entities)
+-------------------------------    ----------------------------------------
+Party   (FK target of Order)       CustomerContact  (nothing FKs to contact_id)
+Order   (FK target of LineItem)    CustomerAddress  (nothing FKs to address_id)
+Product (FK target of Order)       PropertyRisk     (nothing FKs to risk_id)
+```
+
+**Rule**: Does any other table hold a FK column pointing to this entity's surrogate?
+- YES → Keymap required; IDENTITY on `_H` must NOT be used
+- NO  → Child entity; IDENTITY directly on `_H` is acceptable
+
+For child entities, `GENERATED ALWAYS AS IDENTITY` on `_H` is safe because no
+external table attempts to hold a stable reference to that surrogate across SCD versions.
+
+### 4.5 Surrogate Key Allocation Decision Tree
+
+```
+START: Is this entity's surrogate referenced as a FK by any other table?
+|
++-- YES --> Use KEYMAP PATTERN (Advocated)
+|           - Create {Entity}_Keymap with IDENTITY, UNIQUE PI on natural key
+|           - {Entity}_H.{entity}_id = BIGINT NOT NULL (populated via keymap JOIN)
+|           - All FK columns in other tables point to the Keymap surrogate
+|           - Use two-step idempotent load pattern
+|
++-- NO  --> Child entity: IDENTITY on _H is acceptable
+            - {entity}_id = BIGINT GENERATED ALWAYS AS IDENTITY on _H
+            - Single-step INSERT; no prior keymap step needed
+            - Document explicitly that this entity is not a FK target
+```
+
+### 4.6 When Natural Keys Are Acceptable as the Surrogate
 
 **Use natural key as surrogate when:**
 - Natural key is truly immutable
@@ -454,9 +566,9 @@ VALUES (party_id_seq.NEXTVAL, 'CUST-12345', ...);
 ```sql
 CREATE TABLE Product_H (
     product_id BIGINT NOT NULL,  -- Still use surrogate internally
-    sku VARCHAR(20) NOT NULL,    -- Natural key
+    sku        VARCHAR(20) NOT NULL,
     -- ...
-    PRIMARY INDEX (product_id)  -- But PI on surrogate for consistency
+    PRIMARY INDEX (product_id)
 );
 ```
 
@@ -1467,6 +1579,7 @@ START: What is table volume?
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.4 | 2026-04-10 | Section 4 (Surrogate Key Strategy) rewritten to address surrogate key instability in SCD Type 2 tables (issue #7). Added Section 4.2 explaining why IDENTITY on _H tables fails; Section 4.3 introducing the Keymap pattern with DDL templates, two-step idempotent load pattern, and cross-entity FK convention; Section 4.4 defining the child entity exemption rule; Section 4.5 providing a decision tree. Removed the previous Sections 4.2-4.3 which incorrectly advocated IDENTITY on _H tables. Previous Section 4.4 renumbered to 4.6. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.3 | 2026-03-20 | Completed swap of id and key to be consistent throughout design standards | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.2 | 2026-03-18 | Renamed is_current_version → is_current throughout, aligned with Domain Module Design Standard naming convention | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2026-03-17 | Updated naming convention throughout: {entity}_id = Surrogate Key (BIGINT), {entity}_key = Natural Business Key (VARCHAR), aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |

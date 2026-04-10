@@ -1,5 +1,5 @@
 # Domain Module Design Standard
-## AI-Native Data Product Architecture - Version 2.3
+## AI-Native Data Product Architecture - Version 2.4
 
 ---
 
@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 2.3 |
+| **Version** | 2.4 |
 | **Status** | STANDARD |
-| **Last Updated** | 2026-03-20 |
+| **Last Updated** | 2026-04-10 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Domain/Subject Data Module Structure |
 | **Type** | Design Standard (Structural Requirements) |
@@ -440,6 +440,10 @@ If yes to all → Agent-discoverable ✅
 ```sql
 CREATE TABLE {EntityName}_H (
     -- Identity (Required)
+    -- NOTE: {entity}_id must NOT use GENERATED ALWAYS AS IDENTITY.
+    -- The surrogate is allocated via the Keymap pattern and populated
+    -- by JOIN on load. See Advocated Data Management Standards Section 4
+    -- for the full surrogate key allocation strategy.
     {entity}_id        BIGINT NOT NULL,
     {entity}_key         VARCHAR(50) NOT NULL,
     
@@ -470,7 +474,7 @@ COMMENT ON TABLE {EntityName}_H IS
 
 -- Column comments (Required for all columns)
 COMMENT ON COLUMN {EntityName}_H.{entity}_id IS 
-'Surrogate key - system generated unique identifier, never reused, used for all internal joins, foreign key references, and subtype inheritance';
+'Surrogate key - sourced from {EntityName}_Keymap.{entity}_id; stable across all SCD versions for the same real-world entity. Never generated directly on this table. See Advocated Data Management Standards Section 4 for surrogate key allocation strategy.';
 
 COMMENT ON COLUMN {EntityName}_H.{entity}_key IS 
 'Natural business identifier from source system - used for user queries, reports, and external system integration';
@@ -498,6 +502,14 @@ COMMENT ON COLUMN {EntityName}_H.is_deleted IS
 - Current state queries (`is_current = 1`)
 - Exclude deleted records (`is_deleted = 0`)
 - Agent discovery via metadata
+
+**Surrogate key allocation**: The `{entity}_id` surrogate must be allocated via the
+**Keymap pattern** documented in **Advocated Data Management Standards Section 4**.
+In summary: a companion `{EntityName}_Keymap` table holds `GENERATED ALWAYS AS IDENTITY`
+and fires exactly once per natural key; `{EntityName}_H` receives the stable surrogate
+via a JOIN on load. Entities whose surrogate is not referenced as a FK by other tables
+are exempt from the Keymap requirement — see Advocated Standards Section 4.4 for the
+decision rule.
 
 ### 4.2 Reference Data Pattern
 
@@ -836,6 +848,7 @@ SELECT * FROM Product_Current WHERE product_key = 'SKU-456';
 
 - [ ] Follows standard naming conventions (Section 3)
 - [ ] Has required identity columns ({entity}_id, {entity}_key)
+- [ ] {entity}_id is NOT GENERATED ALWAYS AS IDENTITY (surrogate allocated via Keymap pattern per Advocated Data Management Standards Section 4)
 - [ ] Has temporal tracking that supports point-in-time reconstruction
 - [ ] Has is_current and is_deleted indicators
 - [ ] All columns have COMMENT metadata
@@ -970,6 +983,7 @@ party_id BIGINT, product_id BIGINT
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 2.4 | 2026-04-10 | Section 4.1 updated to address surrogate key instability in SCD Type 2 tables (issue #7). Added note that {entity}_id must NOT use GENERATED ALWAYS AS IDENTITY; updated COMMENT ON COLUMN for {entity}_id to reference keymap sourcing. Added surrogate key strategy reference paragraph after Section 4.1 pointing to Advocated Data Management Standards Section 4 for the full Keymap pattern (DDL, load pattern, child entity exemption, decision tree). Design checklist updated with keymap compliance check. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 2.3 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
 | 2.2 | 2026-03-20 | Added Section 8.5 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, and reference to Memory Module Section 8 protocol. Updated Section 8.4 checklist to include documentation capture steps. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 2.1 | 2026-03-16 | Swapped {entity}_id and {entity}_key roles: Since {entity}_id is already defined in iDM as the integration key, designating {entity}_key as the natural business key from the source system resolves conflicts regarding the inheritance of the iDM primary key. | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
