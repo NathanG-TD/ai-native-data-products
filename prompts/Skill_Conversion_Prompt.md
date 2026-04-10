@@ -142,7 +142,8 @@ no module-specific content. Target: 100–150 lines. Hard limit: 175 lines.
 
 5. **Universal conventions** — applied in every module, stated once here:
    - Boolean columns: `BYTEINT NOT NULL DEFAULT 1/0`, `is_` prefix, filter `= 1/0`
-   - Surrogate keys: `BIGINT GENERATED ALWAYS AS IDENTITY`, named `{table}_key`
+   - Surrogate keys in **Domain module** `_H` tables: `BIGINT NOT NULL` — populated from a companion `{EntityName}_Keymap` table that holds `GENERATED ALWAYS AS IDENTITY`. Do NOT place IDENTITY directly on `_H` tables (causes multi-surrogate accumulation under SCD Type 2 versioning). See Advocated Data Management Standards Section 4 for the Keymap pattern and the child entity exemption rule.
+   - Surrogate keys in **all other modules** (Semantic, Memory, Observability, Search, Prediction): `BIGINT GENERATED ALWAYS AS IDENTITY` or `INTEGER GENERATED ALWAYS AS IDENTITY` — these are internal management tables, not SCD history tables, so IDENTITY is correct.
    - Natural/business keys: `{entity}_key VARCHAR` or appropriate type
    - Timestamps: `TIMESTAMP(6) WITH TIME ZONE`
    - Temporal end date: `DATE '9999-12-31'` (open / no end)
