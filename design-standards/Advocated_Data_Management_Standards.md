@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.2 |
+| **Version** | 1.4 |
 | **Status** | GUIDANCE |
-| **Last Updated** | 2026-03-18 |
+| **Last Updated** | 2026-04-10 |
 | **Owner** | Data Architecture |
 | **Scope** | Cross-Module Data Management Guidance |
 | **Type** | Recommended Practices |
@@ -395,53 +395,172 @@ Observability.DataQuality_H    -- Quality time-series
 | **Universality** | Works for all entity types |
 | **Cross-module** | Consistent FK pattern |
 
-### 4.2 Advocated Surrogate Key Pattern
+### 4.2 Surrogate Key Stability in History Tables
 
-```sql
-CREATE TABLE Party_H (
-    -- Surrogate key (advocated)
-    party_id           BIGINT NOT NULL
-        COMMENT 'System-generated unique identifier, never reused',
-    
-    -- Natural key (still required for business access)
-    party_key           VARCHAR(50) NOT NULL
-        COMMENT 'Natural business key from source system',
-    
-    -- ... other columns ...
-    
-    PRIMARY INDEX (party_id)  -- PI on surrogate key
-)
-UNIQUE PRIMARY INDEX (party_id, valid_from_dts, transaction_from_dts);
+In SCD Type 2 history tables, multiple rows exist for the same real-world entity —
+one row per version. It is therefore best practice to **allocate surrogate keys
+separately from the history table itself**, so that the same surrogate value is
+consistently used across all versions of an entity.
 
--- Secondary index on natural key for lookups
-CREATE UNIQUE INDEX idx_party_natural_key
-ON Party_H (party_key)
-WHERE is_current = 1 AND is_deleted = 0;
+This matters because other tables — transaction history, product holdings, prediction
+outputs, cross-module joins — hold FK references to the entity's surrogate. If the
+surrogate changes between versions, those FK references become ambiguous: which
+version's value should be stored?
+
+```
+Illustrative example: Customer 'CUST-12345' with 3 SCD versions
+  Version 1 → party_id = 1
+  Version 2 → party_id = 1   ← same surrogate (correct — separate allocation)
+  Version 3 → party_id = 1   ← same surrogate (correct — separate allocation)
+
+  A transaction table holding party_id = 1 unambiguously identifies the customer
+  regardless of which version is current.
 ```
 
-### 4.3 Surrogate Key Generation
+When surrogate allocation is managed separately, cross-module FK joins are stable
+and unambiguous regardless of how many SCD versions exist for an entity.
 
-**Advocated**: Use database sequence or identity column
+### 4.3 Recommended Approach: The Keymap Pattern
+
+The Keymap pattern is the approach recommended in this document. If your organisation
+already has an established surrogate key allocation strategy — such as a central
+sequence service, a UUID generator, or an enterprise key management framework — that
+existing standard should be used in preference to the Keymap pattern described here.
+The requirement from the Domain Module Design Standard is simply that surrogate keys
+are **stable across SCD versions**; the mechanism for achieving that stability is a
+designer choice.
+
+If adopting the Keymap pattern, the following templates apply.
+
+#### Keymap Table DDL
 
 ```sql
--- Option 1: Teradata IDENTITY column (recommended)
-CREATE TABLE Party_H (
-    party_id BIGINT GENERATED ALWAYS AS IDENTITY 
-        (START WITH 1 INCREMENT BY 1) NOT NULL,
-    -- ... other columns ...
+-- One row per unique real-world entity.
+-- IDENTITY fires here once per natural key — never on the _H table.
+CREATE TABLE {ProductName}_Domain.{Entity}_Keymap (
+    {entity}_id   BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    {entity}_key  VARCHAR(50) CHARACTER SET LATIN NOT CASESPECIFIC NOT NULL,
+    source_system VARCHAR(50) CHARACTER SET LATIN NOT CASESPECIFIC,
+    created_dts   TIMESTAMP(6) WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP(6)
+)
+UNIQUE PRIMARY INDEX ({entity}_key);  -- UNIQUE PI: one row per natural key
+
+COMMENT ON TABLE {ProductName}_Domain.{Entity}_Keymap IS
+'Keymap: one row per unique {entity}. Surrogate key (IDENTITY) generated here
+and referenced by {Entity}_H and all cross-domain FK columns. Natural key is
+{entity}_key from the source system.';
+COMMENT ON COLUMN {ProductName}_Domain.{Entity}_Keymap.{entity}_id IS
+'Surrogate key - generated exactly once per real-world entity. Stable across
+all SCD versions in {Entity}_H and across all modules that reference this entity.';
+COMMENT ON COLUMN {ProductName}_Domain.{Entity}_Keymap.{entity}_key IS
+'Natural business key from the source system - used to look up the stable surrogate.';
+```
+
+#### History Table DDL
+
+```sql
+-- {entity}_id is BIGINT NOT NULL — populated from the keymap (or equivalent
+-- allocation mechanism) via JOIN. Never generated directly on this table.
+-- Multiple rows with the same {entity}_id will exist (one per SCD version).
+-- PRIMARY INDEX (non-unique) co-locates all versions on the same AMP,
+-- making expire-and-insert SCD operations efficient.
+CREATE TABLE {ProductName}_Domain.{Entity}_H (
+    {entity}_id   BIGINT NOT NULL,         -- from Keymap — stable across versions
+    {entity}_key  VARCHAR(50) NOT NULL,    -- natural key repeated for convenience
+    -- ... temporal and business columns ...
+    PRIMARY INDEX ({entity}_id)            -- NUPI: multiple versions allowed
 );
 
--- Option 2: Sequence (more flexible)
-CREATE SEQUENCE party_id_seq 
-    START WITH 1 
-    INCREMENT BY 1 
-    NO CYCLE;
-
-INSERT INTO Party_H (party_id, party_key, ...)
-VALUES (party_id_seq.NEXTVAL, 'CUST-12345', ...);
+COMMENT ON COLUMN {ProductName}_Domain.{Entity}_H.{entity}_id IS
+'Surrogate key - allocated via surrogate key allocation strategy (see Advocated
+Data Management Standards Section 4). Stable across all SCD versions for the
+same real-world entity. Never generated directly on this table.';
 ```
 
-### 4.4 When Natural Keys Are Acceptable
+#### Two-Step Load Pattern (Keymap approach)
+
+```sql
+-- Step 1: Register any new natural keys (idempotent — WHERE NOT EXISTS)
+INSERT INTO {ProductName}_Domain.{Entity}_Keymap ({entity}_key, source_system)
+SELECT DISTINCT TRIM(s.NATURAL_KEY_COLUMN), 'SOURCE_SYSTEM_NAME'
+FROM {source_table} s
+WHERE NOT EXISTS (
+    SELECT 1 FROM {ProductName}_Domain.{Entity}_Keymap k
+    WHERE k.{entity}_key = TRIM(s.NATURAL_KEY_COLUMN)
+);
+
+-- Step 2: Populate history table using keymap JOIN
+INSERT INTO {ProductName}_Domain.{Entity}_H (
+    {entity}_id, {entity}_key, /* business columns */,
+    valid_from_dts, valid_to_dts, is_current, is_deleted
+)
+SELECT
+    k.{entity}_id,               -- stable surrogate from keymap
+    TRIM(s.NATURAL_KEY_COLUMN),
+    /* business columns */,
+    CURRENT_TIMESTAMP(6), TIMESTAMP '9999-12-31 23:59:59.999999+00:00', 1, 0
+FROM {source_table}                              s
+JOIN {ProductName}_Domain.{Entity}_Keymap        k
+    ON k.{entity}_key = TRIM(s.NATURAL_KEY_COLUMN);
+```
+
+#### Cross-Entity Foreign Keys
+
+Regardless of the surrogate key allocation mechanism chosen, all FK references
+between domain entities should point to the **stable surrogate**, not to a specific
+row in the `_H` table, to ensure FK joins are unambiguous across SCD versions.
+
+```sql
+-- FK columns in other entities reference the stable surrogate
+CREATE TABLE {ProductName}_Domain.Order_H (
+    order_id    BIGINT NOT NULL,
+    party_id    BIGINT,     -- FK to Party stable surrogate (e.g. via Party_Keymap)
+    product_id  BIGINT,     -- FK to Product stable surrogate
+    -- ...
+);
+```
+
+### 4.4 Reference and Lookup Table Exemption
+
+The surrogate key stability requirement applies to entities whose surrogate is
+**referenced as a foreign key by other tables**. Reference and lookup tables, as
+well as detail/child entities that are never themselves FK-referenced, do not need a
+separate allocation mechanism — a simple IDENTITY column directly on the `_H` table
+is sufficient, since no external table holds a reference to their surrogate across
+SCD versions.
+
+```
+Stable allocation required           Simple IDENTITY on _H acceptable
+----------------------------------   ------------------------------------------
+Party   (FK target of Order)         Reference tables  (e.g. LoanPurpose_R)
+Order   (FK target of LineItem)      Lookup tables     (e.g. StatusCode_R)
+Product (FK target of Order)         Detail/child entities with no FK dependants
+                                     (e.g. CustomerContact, PropertyRisk)
+```
+
+**Rule**: Does any other table hold a FK column pointing to this entity's surrogate?
+- YES → A surrogate allocation strategy is recommended to ensure FK stability across SCD versions
+- NO  → Simple IDENTITY on `_H` is sufficient
+
+### 4.5 Surrogate Key Allocation Decision Tree
+
+```
+START: Is this entity's surrogate referenced as a FK by any other table?
+|
++-- YES --> Surrogate allocation strategy required
+|           Options (choose one):
+|           a) Keymap pattern (recommended in this document)
+|           b) Organisation's existing central key allocation standard
+|           c) Database sequence with natural key constraint on _H
+|           Key principle: the surrogate must be stable across SCD versions
+|
++-- NO  --> Reference/lookup table or detail entity: IDENTITY on _H is acceptable
+            - {entity}_id = BIGINT GENERATED ALWAYS AS IDENTITY on _H
+            - Single-step INSERT; no prior allocation step needed
+            - Document explicitly that this entity is not a FK target
+```
+
+### 4.6 When Natural Keys Are Acceptable as the Surrogate
 
 **Use natural key as surrogate when:**
 - Natural key is truly immutable
@@ -454,9 +573,9 @@ VALUES (party_id_seq.NEXTVAL, 'CUST-12345', ...);
 ```sql
 CREATE TABLE Product_H (
     product_id BIGINT NOT NULL,  -- Still use surrogate internally
-    sku VARCHAR(20) NOT NULL,    -- Natural key
+    sku        VARCHAR(20) NOT NULL,
     -- ...
-    PRIMARY INDEX (product_id)  -- But PI on surrogate for consistency
+    PRIMARY INDEX (product_id)
 );
 ```
 
@@ -1467,6 +1586,7 @@ START: What is table volume?
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.4 | 2026-04-10 | Section 4 (Surrogate Key Strategy) rewritten to address surrogate key instability in SCD Type 2 tables (issue #7). Added Section 4.2 explaining why IDENTITY on _H tables fails; Section 4.3 documenting the recommended Keymap pattern (with flexibility note that organisations should use their own standard if one exists); Section 4.4 (Reference and Lookup Table Exemption) clarifying that reference/lookup tables and detail entities not FK-referenced may use IDENTITY directly; Section 4.5 providing a decision tree with three allocation options; Section 4.6 (natural keys, renamed from old 4.4). Removed old Sections 4.2-4.3 which incorrectly advocated IDENTITY on _H tables. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.3 | 2026-03-20 | Completed swap of id and key to be consistent throughout design standards | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.2 | 2026-03-18 | Renamed is_current_version → is_current throughout, aligned with Domain Module Design Standard naming convention | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
 | 1.1 | 2026-03-17 | Updated naming convention throughout: {entity}_id = Surrogate Key (BIGINT), {entity}_key = Natural Business Key (VARCHAR), aligned with Domain Module Design Standard v2.1 | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
