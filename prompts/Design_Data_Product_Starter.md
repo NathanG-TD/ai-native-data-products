@@ -84,6 +84,7 @@ group questions so I am never answering more than 3–4 at a time.
 - Map each entity to the correct module (Domain, Prediction, Search, etc.)
 - Identify relationships between entities
 - Flag any scope decisions or ambiguities that need input before design begins
+- For each module left unchecked above, state whether it is **deferred** (planned for a future phase) or **out of scope** (not needed for this product), and give a brief rationale — this feeds into Memory documentation in D5
 - Note any anticipated deviations from the design standards
 
 *Stop here and wait for review.*
@@ -116,12 +117,15 @@ group questions so I am never answering more than 3–4 at a time.
 
 - DDL for all Semantic tables
 - Seed `INSERT` statements for this data product:
-  - `data_product_map` — one row per module (DEPLOYED or PLANNED)
+  - `data_product_map` — one row per **deployed** module only (agents use this for discovery; undeployed modules are recorded in Memory — see D5)
   - `entity_metadata` — one row per table across all modules
   - `naming_standard` — full set for this product's conventions
   - `column_metadata` — all PII/sensitive columns at minimum
-  - `table_relationship` — every FK and associative relationship
-- Confirm `v_relationship_paths` produces valid JOIN syntax for key entity pairs
+  - `table_relationship` — every relationship an agent is expected to traverse, covering all five categories: intra-module FKs, reference table lookups, cross-module joins, multi-hop semantic joins, and bidirectional traversals where agents will traverse in both directions
+- Validate `table_relationship` completeness:
+  - Run the isolation check query: confirm no entity in `entity_metadata` has zero entries in `table_relationship`
+  - Run the path existence query for each entity pair agents are expected to join: confirm `v_relationship_paths` returns a result with valid JOIN syntax
+  - Any isolated entity must be either documented as a deliberate standalone (capture in `Design_Decision`) or have its missing relationships added
 
 *Stop here and wait for review.*
 
@@ -137,6 +141,12 @@ For each module:
 - Standard views
 - Representative sample queries demonstrating key use cases
 - Semantic module registration (entity_metadata, table_relationship, data_product_map update)
+
+**When designing the Memory module, the following are mandatory in addition to the standard DDL:**
+- `Module_Registry` — one row for **every module considered** during this design (not just deployed ones), with `deployment_status` set to DEPLOYED, PLANNED, or DEPRECATED
+- `Design_Decision` entries for every module that is deferred or excluded (rationale from D1), and for the two mandatory scope decisions: database layout choice (DD-SCOPE-001) and module scope rationale (DD-SCOPE-002)
+- `Query_Cookbook` entry `QC-SEMANTIC-002` — the standard ERD generation recipe (template in Memory Module Design Standard Section 8.4)
+- At least one cross-module `Query_Cookbook` entry per deployed module pair
 
 *Stop after each module and wait for review before proceeding to the next.*
 
@@ -156,7 +166,7 @@ For each module:
 #### Deliverable 7 — Deviations & Implementation Plan
 
 - Standards applied without change (summary)
-- Documented deviations with business justification
+- Documented deviations with business justification — each deviation must be captured as a `Design_Decision` entry in Memory with `decision_category = 'ARCHITECTURE'` (use the deviation template in Memory Module Design Standard Section 7.3); the D7 document summarises them, Memory is the authoritative record
 - Deployment sequence (table creation order, data load order)
 - Suggested feedback to the design standards based on lessons from this design
 
@@ -170,7 +180,7 @@ For each module:
 - **Justify deviations** — every departure from a standard must have a documented reason
 - **Agent-native** — agents are primary consumers; every design decision should support autonomous discovery and querying
 - **No data duplication** — each module owns its data; other modules join back, never copy
-- **Teradata-optimised** — Primary Index choices, co-location, compression, and statistics collection are part of the design, not afterthoughts
+- **Platform-optimised** — physical design choices (indexing strategy, co-location, compression, statistics collection) are part of the design, not afterthoughts; apply the relevant Platform Profile for your deployment target
 
 ---
 
