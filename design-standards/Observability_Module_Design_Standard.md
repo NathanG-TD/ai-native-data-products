@@ -28,7 +28,7 @@
 
 ---
 
-> **Platform Note:** All DDL and SQL examples in this standard use **Teradata Vantage** syntax (e.g. `REPLACE VIEW`, `LOCKING ROW FOR ACCESS`, `DBC.TablesV`, `'0A'xc` hex literals). When implementing on a different database platform, these examples must be converted to the target vendor's equivalent DDL. The structural design — table schemas, column contracts, view logic, and module boundaries — is platform-agnostic.
+> **Platform Note:** All DDL and SQL examples in this standard use **Teradata** syntax (e.g. `REPLACE VIEW`, `LOCKING ROW FOR ACCESS`, `DBC.TablesV`, `'0A'xc` hex literals). When implementing on a different database platform, these examples must be converted to the target vendor's equivalent DDL. The structural design — table schemas, column contracts, view logic, and module boundaries — is platform-agnostic.
 
 ---
 
@@ -882,16 +882,16 @@ WHERE
   "run": { "runId": "3b452093-782c-4ef2-9c0c-aafe2aa6f34d" },
   "job": {
     "namespace": "airflow://prod-scheduler.corp.com",
-    "name": "StGeoMortgage_ETL.ETL_PARTY_FEATURES"
+    "name": "BigBankMortgage_ETL.ETL_PARTY_FEATURES"
   },
   "input": {
     "namespace": "teradata://tdprod.corp.com:1025",
-    "name": "StGeoMortgage_Domain.Party_H",
+    "name": "BigBankMortgage_Domain.Party_H",
     "rowCount": 250000
   },
   "output": {
     "namespace": "teradata://tdprod.corp.com:1025",
-    "name": "StGeoMortgage_Prediction.customer_features",
+    "name": "BigBankMortgage_Prediction.customer_features",
     "rowCount": 248500
   },
   "producer": "https://teradata.com/ai-native-data-product",
@@ -1135,7 +1135,7 @@ OpenTelemetry:       Observability
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
-| 1.6 | 2026-04-15 | Added Platform Note — all DDL examples use Teradata Vantage syntax; structural design is platform-agnostic. Fixed UNION ALL type-width truncation in lineage_graph view — added explicit CAST to all literal strings and job_name columns that appear on only one leg (without CASTs, `''` truncated container names to empty, `'ETL_INPUT'` truncated `'ETL_OUTPUT'` to `'ETL_OUTPU'`). Replaced Teradata `END (VARCHAR(30))` cast shorthand with ANSI `CAST(CASE...END AS VARCHAR(30))` longhand throughout. Added CAST rationale comment to view header. | Paul Dancer, Worldwide Data Architecture Team, Teradata |
+| 1.6 | 2026-04-15 | Added Platform Note — all DDL examples use Teradata syntax; structural design is platform-agnostic. Fixed UNION ALL type-width truncation in lineage_graph view — added explicit CAST to all literal strings and job_name columns that appear on only one leg (without CASTs, `''` truncated container names to empty, `'ETL_INPUT'` truncated `'ETL_OUTPUT'` to `'ETL_OUTPU'`). Replaced Teradata `END (VARCHAR(30))` cast shorthand with ANSI `CAST(CASE...END AS VARCHAR(30))` longhand throughout. Added CAST rationale comment to view header. | Paul Dancer, Worldwide Data Architecture Team, Teradata |
 | 1.5 | 2026-04-09 | Lineage definition/execution split — replaced single data_lineage table with definitional data_lineage (one row per declared flow, with is_active lifecycle) and operational lineage_run (one row per execution, FK to definition). Added Section 1.3 Lineage Separation Principle. Added new Section 4 Semantic Views with lineage_graph (reads definitions only, VARCHAR(30) casts on all Kind columns) and lineage_run_latest views. Updated Section 6.3 Monitor All Modules query to use lineage_run. Updated Required Tables (7.1), added Required Semantic Views (7.2), updated Design Checklist (7.3) and Documentation Capture (7.4). Renumbered sections 4–7 (previously 4–6). | Paul Dancer, Worldwide Data Architecture Team, Teradata |
 | 1.4 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
 | 1.3 | 2026-03-20 | Added Section 6.3 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, and reference to Memory Module Section 8 protocol. Updated Section 6.2 checklist to include documentation capture steps. | Nathan Green, Worldwide Data Architecture Team, Teradata |
