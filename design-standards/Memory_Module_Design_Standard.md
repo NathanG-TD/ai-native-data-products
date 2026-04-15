@@ -1,5 +1,5 @@
 # Memory Module Design Standard
-## AI-Native Data Product Architecture - Version 1.6
+## AI-Native Data Product Architecture - Version 1.7
 
 ---
 
@@ -7,7 +7,7 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.6 |
+| **Version** | 1.7 |
 | **Status** | STANDARD |
 | **Last Updated** | 2026-03-20 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
@@ -990,11 +990,82 @@ See **Section 8** for the complete Documentation Sub-Module design, table defini
 | **Privacy scoping** | Scope levels in use | USER, TEAM, ORGANIZATION |
 | **Retention policies** | How long to keep memory | 90 days for sessions, 2 years for learnings |
 | **Sharing policies** | What can be shared across agents | Organization-level strategies only |
-| **Design decisions** | Key architectural/schema choices for dp_documentation | Min. 3 decisions per module (see Section 8.3) |
+| **Design decisions** | Key architectural/schema choices | Min. 3 decisions per module (see Section 8.3) |
 | **Glossary terms** | Domain terms introduced by this module | Min. 3 terms for Business_Glossary |
-| **Query cookbook entries** | Key query patterns for this module | Min. 1 recipe for Query_Cookbook |
+| **Query cookbook entries** | Key query patterns for this module | Min. 1 recipe per module; min. 1 cross-module recipe per deployed module pair |
 
-### 7.2 Design Checklist
+### 7.2 Minimum Seed Data Requirements
+
+The following `Module_Registry` and `Design_Decision` entries are **required** at data product deployment, not optional.
+
+#### Module_Registry — all considered modules
+
+A `Module_Registry` row must exist for **every module that was considered during design**, not only those that were deployed. This gives agents and team members the full scope picture without needing to consult external documents.
+
+| deployment_status | When to use |
+|---|---|
+| `DEPLOYED` | Module is active and queryable — a corresponding `data_product_map` entry exists in Semantic |
+| `PLANNED` | Module is in scope but not yet built — record expected timeline or dependency in `module_scope` |
+| `DEPRECATED` | Module was previously deployed and has been retired |
+
+For any module with `deployment_status` of `PLANNED` or `DEPRECATED`, a corresponding `Design_Decision` entry is **required** explaining the rationale (e.g. why deferred, what triggered retirement, what the plan is).
+
+**Minimum: one `Module_Registry` row per module considered, with `deployment_status` set correctly.**
+
+#### Design_Decision — scope decisions
+
+At a minimum, the following design decisions must be documented at first deployment:
+
+| Decision ID pattern | Covers |
+|---|---|
+| `DD-SCOPE-001` | Database layout choice (separate databases per module vs. single database) |
+| `DD-SCOPE-002` | Which modules are in scope and which are deferred or excluded, with rationale |
+| `DD-{MODULE}-001` | Each module's primary index strategy and temporal pattern choice |
+
+Any deviation from the AI-Native Data Product design standards must also be captured as a `Design_Decision` with `decision_category = 'ARCHITECTURE'`. See Section 7.3 for the deviation convention.
+
+#### Query_Cookbook — minimum entries
+
+| Recipe ID pattern | Required content |
+|---|---|
+| `QC-SEMANTIC-001` | Agent bootstrap: query `data_product_map` then `entity_metadata` |
+| `QC-SEMANTIC-002` | ERD generation: query `table_relationship` to produce entity-relationship output |
+| `QC-{MODULE}-001` | At least one representative query per deployed module |
+| `QC-XMODULE-{NNN}` | At least one cross-module join example per deployed module pair |
+
+The ERD recipe (`QC-SEMANTIC-002`) is particularly important: it allows any agent or team member to generate a current entity-relationship diagram from the living `table_relationship` data rather than relying on a static diagram that may have drifted. A standard template for this recipe is provided in the `Query_Cookbook` table definition in Section 8.4.
+
+### 7.3 Deviation Documentation Convention
+
+When a data product deviates from any AI-Native Data Product design standard — whether intentionally or due to constraints — the deviation must be captured in `Design_Decision` before the product is considered complete.
+
+```sql
+INSERT INTO Memory.Design_Decision (
+    decision_id, decision_version, decision_title,
+    decision_description, context, alternatives_considered,
+    rationale, consequences,
+    decision_status, decision_category,
+    source_module, module_version,
+    decided_by, decided_date,
+    valid_from, valid_to, is_current
+) VALUES (
+    'DD-{MODULE}-NNN', 1,
+    'Deviation from {standard name}: {brief description}',
+    'Description of what was done differently',
+    'Why the standard could not be followed as written',
+    'Standard approach and other options considered',
+    'Why this deviation was chosen over the standard approach',
+    'Impact on agents, maintainability, and future modules',
+    'ACCEPTED', 'ARCHITECTURE',
+    '{MODULE}', '{version}',
+    '{author}', CURRENT_DATE,
+    CURRENT_DATE, DATE '9999-12-31', 1
+);
+```
+
+This is not a compliance step — it is how the data product communicates design intent to the agents and team members who will work with it in the future.
+
+### 7.4 Design Checklist
 
 **Before implementation:**
 
@@ -1010,13 +1081,17 @@ See **Section 8** for the complete Documentation Sub-Module design, table defini
 - [ ] Integration with Search (finding similar sessions/patterns)
 - [ ] Retention policies documented
 - [ ] Privacy policies documented
-- [ ] Module_Registry INSERT generated for this module
-- [ ] Min. 3 Design_Decision INSERTs generated
-- [ ] Change_Log initial release entry generated
-- [ ] Min. 3 Business_Glossary terms captured
-- [ ] Min. 1 Query_Cookbook recipe captured
+- [ ] `Module_Registry` INSERT generated for **every module considered** (DEPLOYED, PLANNED, or DEPRECATED)
+- [ ] `Design_Decision` entries generated for all deferred/excluded modules
+- [ ] Min. 3 `Design_Decision` INSERTs generated per deployed module
+- [ ] All deviations from design standards captured in `Design_Decision`
+- [ ] `Change_Log` initial release entry generated
+- [ ] Min. 3 `Business_Glossary` terms captured
+- [ ] Min. 1 `Query_Cookbook` recipe per deployed module
+- [ ] ERD generation recipe (`QC-SEMANTIC-002`) captured
+- [ ] Min. 1 cross-module `Query_Cookbook` recipe per deployed module pair
 
-### 7.3 Quality Criteria
+### 7.5 Quality Criteria
 
 **A good Memory Module should:**
 
@@ -1028,9 +1103,11 @@ See **Section 8** for the complete Documentation Sub-Module design, table defini
 - ✅ Learn from Observability outcomes
 - ✅ Use JSON for flexible context storage
 - ✅ Implement retention policies
-- ✅ Register itself in Memory.Module_Registry
-- ✅ Capture design decisions (min. 3) into Memory.Design_Decision
-- ✅ Populate Business_Glossary with terms it introduces
+- ✅ Have a `Module_Registry` row for every module considered during design
+- ✅ Capture design decisions (min. 3 per deployed module) in `Design_Decision`
+- ✅ Document all deviations from standards in `Design_Decision`
+- ✅ Populate `Business_Glossary` with terms it introduces
+- ✅ Include ERD generation recipe in `Query_Cookbook`
 
 ---
 
@@ -1186,7 +1263,8 @@ Tracks all modules in this data product and their version history.
 CREATE TABLE Memory.Module_Registry (
     module_registry_key  BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     module_name          VARCHAR(50) NOT NULL,
-database_name VARCHAR(128) NOT NULL,
+    database_name        VARCHAR(128) NOT NULL,
+    deployment_status    VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
     module_version       VARCHAR(20) NOT NULL,
     module_purpose       CLOB NOT NULL,
     module_scope         CLOB,
@@ -1206,9 +1284,11 @@ database_name VARCHAR(128) NOT NULL,
 PRIMARY INDEX (module_registry_key);
 
 COMMENT ON TABLE Memory.Module_Registry IS
-'Version registry for all modules in this data product — backbone for point-in-time documentation generation';
+'Version registry for all modules considered during data product design — includes deployed, planned, and deprecated modules. Backbone for point-in-time documentation generation and full scope visibility.';
 COMMENT ON COLUMN Memory.Module_Registry.module_name IS
 'Module name — DOMAIN, SEMANTIC, SEARCH, OBSERVABILITY, MEMORY, PREDICTION';
+COMMENT ON COLUMN Memory.Module_Registry.deployment_status IS
+'Lifecycle status of this module: DEPLOYED = active and queryable; PLANNED = in scope but not yet built; DEPRECATED = previously deployed, now retired. Agents should filter data_product_map (Semantic) for active modules; this column captures the full design-time picture.';
 COMMENT ON COLUMN Memory.Module_Registry.module_version IS
 'Semantic version string (1.0.0)';
 COMMENT ON COLUMN Memory.Module_Registry.is_current IS
@@ -1335,7 +1415,52 @@ COMMENT ON COLUMN Memory.Query_Cookbook.sql_template IS
 'SQL with :parameter placeholders — agents substitute values at runtime';
 ```
 
-#### Implementation_Note
+**Standard ERD Recipe (`QC-SEMANTIC-002`)**
+
+Every data product must include the following recipe. It allows any agent or team member to generate a current entity-relationship diagram from the `table_relationship` data in the Semantic module, replacing any static diagram that may have drifted out of sync.
+
+```sql
+INSERT INTO Memory.Query_Cookbook (
+    recipe_id, recipe_title, recipe_description, use_case,
+    target_module, sql_template, parameter_descriptions,
+    performance_notes, complexity,
+    source_module, module_version,
+    is_active, valid_from, valid_to
+) VALUES (
+    'QC-SEMANTIC-002',
+    'Generate entity-relationship diagram from table_relationship',
+    'Queries the Semantic table_relationship table to produce a complete entity-relationship listing for this data product. Output can be formatted as Mermaid erDiagram syntax or as a plain relationship listing. Use to verify the current data model without relying on a static diagram.',
+    'Data model documentation, onboarding, design review',
+    'SEMANTIC',
+    '-- Full ER listing: all active relationships across all modules
+SELECT
+    r.from_database,
+    r.from_table,
+    r.from_column,
+    r.relationship_type,
+    r.cardinality,
+    r.to_database,
+    r.to_table,
+    r.to_column,
+    r.join_type,
+    r.is_mandatory,
+    r.relationship_desc
+FROM {ProductName}_Semantic.table_relationship r
+WHERE r.is_active = 1
+ORDER BY r.from_table, r.to_table;
+
+-- Mermaid erDiagram format (agent renders as diagram):
+-- For each row above, emit:
+--   {from_table} {cardinality_symbol} {to_table} : "{relationship_desc}"
+-- Cardinality symbols: ONE_TO_ONE = ||--||, ONE_TO_MANY = ||--o{,
+--   MANY_TO_ONE = }o--||, MANY_TO_MANY = }o--o{',
+    'Replace {ProductName} with the actual product name before executing.',
+    'Lightweight query on a small metadata table — no performance concerns.',
+    'SIMPLE',
+    'SEMANTIC', :module_version,
+    1, CURRENT_DATE, DATE '9999-12-31'
+);
+```
 
 Operational knowledge, workarounds, known issues.
 
@@ -1650,6 +1775,7 @@ Discovered Patterns:    Indefinite if validated
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.7 | 2026-04-15 | Added `deployment_status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED'` to `Module_Registry` DDL, enabling DEPLOYED/PLANNED/DEPRECATED lifecycle tracking for all modules considered during design. Expanded Section 7 with Minimum Seed Data Requirements (7.2), Deviation Documentation Convention (7.3), updated Design Checklist (7.4), and Quality Criteria (7.5). Key additions: Module_Registry row required for every module considered; Design_Decision entries required for deferred/excluded modules and all standards deviations; ERD generation recipe (QC-SEMANTIC-002) mandatory; cross-module cookbook recipes required per deployed module pair. Added standard ERD recipe INSERT template to Section 8.4. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.6 | 2026-03-20 | Fixed = 'Y' filter value in Search integration example (Section 6.3) to = 1. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.5 | 2026-03-20 | Revised Documentation Sub-Module (Section 8) to align with data product self-containment principle. Removed shared dp_documentation cross-product database pattern. Documentation tables now reside in the same {ProductName}_Memory database as runtime memory tables, framed as "design memory" alongside "runtime memory". Removed data_product column from all 6 table DDL definitions. Removed cross-product (data_product = 'ALL') pattern. Simplified temporal queries. Collapsed 3 workflows to 2 (Bootstrap removed — documentation tables created as part of Memory DDL). Updated Section 6.5 example INSERT to use Memory.Design_Decision. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.4 | 2026-03-20 | Added Documentation Sub-Module (Section 8) — merged standalone documentation skill into Memory standard. Covers shared dp_documentation database, 6 table definitions (Module_Registry, Design_Decision, Business_Glossary, Query_Cookbook, Implementation_Note, Change_Log), 3 workflows (Bootstrap, Capture, Generate), temporal query patterns, standard views, and cross-module capture protocol. Updated Sections 1.1, 1.2, 2.1, 6, 7 to reference documentation capabilities. | Nathan Green, Worldwide Data Architecture Team, Teradata |
