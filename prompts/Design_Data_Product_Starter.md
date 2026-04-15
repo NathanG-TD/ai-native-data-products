@@ -46,12 +46,13 @@ and document any deviations.**
 [3–5 specific use cases, e.g. "Customer churn prediction", "Similar product discovery"]
 
 **Modules needed:**
-- [ ] Domain/Subject Data — always required
+- [ ] Memory - always required
 - [ ] Semantic — always required
+- [ ] Domain/Subject Data — always required
+- [ ] Observability (Monitoring & Audit)
 - [ ] Prediction (Feature Store)
 - [ ] Search (Vector Embeddings)
-- [ ] Observability (Monitoring & Audit)
-- [ ] Memory (Agent State & Learning)
+
 
 **Data sources:**
 [Source systems that feed this product, e.g. CRM, ERP, event stream]
