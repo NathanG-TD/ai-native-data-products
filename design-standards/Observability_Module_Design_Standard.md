@@ -1,5 +1,5 @@
 # Observability Module Design Standard
-## AI-Native Data Product Architecture - Version 1.5
+## AI-Native Data Product Architecture - Version 1.6
 
 ---
 
@@ -7,9 +7,9 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.5 |
+| **Version** | 1.6 |
 | **Status** | STANDARD |
-| **Last Updated** | 2026-04-09 |
+| **Last Updated** | 2026-04-15 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | **Scope** | Observability Module (Monitoring & Feedback) |
 | **Type** | Design Standard (Structural Requirements) |
@@ -25,6 +25,10 @@
 5. [Open Standards Integration](#5-open-standards-integration)
 6. [Integration with Other Modules](#6-integration-with-other-modules)
 7. [Designer Responsibilities](#7-designer-responsibilities)
+
+---
+
+> **Platform Note:** All DDL and SQL examples in this standard use **Teradata Vantage** syntax (e.g. `REPLACE VIEW`, `LOCKING ROW FOR ACCESS`, `DBC.TablesV`, `'0A'xc` hex literals). When implementing on a different database platform, these examples must be converted to the target vendor's equivalent DDL. The structural design — table schemas, column contracts, view logic, and module boundaries — is platform-agnostic.
 
 ---
 
@@ -573,6 +577,13 @@ REPLACE VIEW Semantic.lineage_graph AS
  *
  * Object types resolved from DBC.TablesV for Table nodes.
  * Job nodes carry Src_Kind / Tgt_Kind = 'Job'.
+ *
+ * IMPORTANT: All literal strings ('', 'ETL_INPUT', 'Job', etc.) and
+ * job_name columns that appear on only one leg of the UNION ALL must
+ * be explicitly CAST to a sufficient VARCHAR width. Without CASTs,
+ * Teradata infers the column type from Leg 1 — a literal '' becomes
+ * VARCHAR(0), truncating Leg 2's actual container names to empty.
+ * Similarly, 'ETL_INPUT' (9 chars) truncates 'ETL_OUTPUT' to 'ETL_OUTPU'.
  */
 LOCKING ROW FOR ACCESS
 
@@ -584,7 +595,7 @@ LOCKING ROW FOR ACCESS
         ,COALESCE(dl.source_database, '')                            AS Src_Container_Name
         ,dl.source_table                                             AS Src_Object_Name
         /* ── Source Object Type from DBC.TablesV ─────────────────── */
-        ,CASE WHEN Src_Obj.TableKind IS NOT NULL
+        ,CAST(CASE WHEN Src_Obj.TableKind IS NOT NULL
               THEN CASE Src_Obj.TableKind
                        WHEN 'T' THEN 'Table'
                        WHEN 'O' THEN 'No PI Table'
@@ -617,18 +628,19 @@ LOCKING ROW FOR ACCESS
                        ELSE 'Unknown: ' || Src_Obj.TableKind
                    END
               ELSE 'Unknown'
-         END (VARCHAR(30))                                           AS Src_Kind
+         END AS VARCHAR(30))                                             AS Src_Kind
         ,COALESCE(dl.source_database, '') || '.' || dl.source_table
          || '0A'xc || ' [' || Src_Kind || ']'                        AS Src_Display_Name
-        ,'ETL_INPUT'                                                 AS Edge_Relationship
+        /* ── CAST literals to prevent UNION ALL type-width truncation ── */
+        ,CAST('ETL_INPUT' AS VARCHAR(12))                            AS Edge_Relationship
         ,dl.transformation_type                                      AS Transformation_Type
         ,dl.transformation_logic                                     AS Transformation_Logic
         ,dl.lineage_id                                               AS Lineage_ID
         /* ── Target is the Job ───────────────────────────────────── */
-        ,dl.job_name                                                 AS Tgt_Object_Name_FQ
-        ,''                                                          AS Tgt_Container_Name
+        ,CAST(dl.job_name AS VARCHAR(128))                           AS Tgt_Object_Name_FQ
+        ,CAST('' AS VARCHAR(128))                                    AS Tgt_Container_Name
         ,dl.job_name                                                 AS Tgt_Object_Name
-        ,'Job' (VARCHAR(30))                                         AS Tgt_Kind
+        ,CAST('Job' AS VARCHAR(30))                                  AS Tgt_Kind
         ,dl.job_name || '0A'xc || ' [' || Tgt_Kind || ']'            AS Tgt_Display_Name
     FROM
         Observability.data_lineage AS dl
@@ -644,12 +656,13 @@ LOCKING ROW FOR ACCESS
      *  Leg 2: Job → Target Table (ETL_OUTPUT)
      * ══════════════════════════════════════════════════════════════ */
     SELECT
-        dl.job_name                                                  AS Src_Object_Name_FQ
-        ,''                                                          AS Src_Container_Name
+        /* ── CAST literals to match Leg 1 column widths ────────────── */
+        CAST(dl.job_name AS VARCHAR(128))                            AS Src_Object_Name_FQ
+        ,CAST('' AS VARCHAR(128))                                    AS Src_Container_Name
         ,dl.job_name                                                 AS Src_Object_Name
-        ,'Job' (VARCHAR(30))                                         AS Src_Kind
+        ,CAST('Job' AS VARCHAR(30))                                  AS Src_Kind
         ,dl.job_name || '0A'xc || ' [' || Src_Kind || ']'            AS Src_Display_Name
-        ,'ETL_OUTPUT'                                                AS Edge_Relationship
+        ,CAST('ETL_OUTPUT' AS VARCHAR(12))                           AS Edge_Relationship
         ,dl.transformation_type                                      AS Transformation_Type
         ,dl.transformation_logic                                     AS Transformation_Logic
         ,dl.lineage_id                                               AS Lineage_ID
@@ -657,7 +670,7 @@ LOCKING ROW FOR ACCESS
         ,COALESCE(dl.target_database, '')                            AS Tgt_Container_Name
         ,dl.target_table                                             AS Tgt_Object_Name
         /* ── Target Object Type from DBC.TablesV ─────────────────── */
-        ,CASE WHEN Tgt_Obj.TableKind IS NOT NULL
+        ,CAST(CASE WHEN Tgt_Obj.TableKind IS NOT NULL
               THEN CASE Tgt_Obj.TableKind
                        WHEN 'T' THEN 'Table'
                        WHEN 'O' THEN 'No PI Table'
@@ -690,7 +703,7 @@ LOCKING ROW FOR ACCESS
                        ELSE 'Unknown: ' || Tgt_Obj.TableKind
                    END
               ELSE 'Unknown'
-         END (VARCHAR(30))                                           AS Tgt_Kind
+         END AS VARCHAR(30))                                             AS Tgt_Kind
         ,COALESCE(dl.target_database, '') || '.' || dl.target_table
          || '0A'xc || ' [' || Tgt_Kind || ']'                        AS Tgt_Display_Name
     FROM
@@ -1122,6 +1135,7 @@ OpenTelemetry:       Observability
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.6 | 2026-04-15 | Added Platform Note — all DDL examples use Teradata Vantage syntax; structural design is platform-agnostic. Fixed UNION ALL type-width truncation in lineage_graph view — added explicit CAST to all literal strings and job_name columns that appear on only one leg (without CASTs, `''` truncated container names to empty, `'ETL_INPUT'` truncated `'ETL_OUTPUT'` to `'ETL_OUTPU'`). Replaced Teradata `END (VARCHAR(30))` cast shorthand with ANSI `CAST(CASE...END AS VARCHAR(30))` longhand throughout. Added CAST rationale comment to view header. | Paul Dancer, Worldwide Data Architecture Team, Teradata |
 | 1.5 | 2026-04-09 | Lineage definition/execution split — replaced single data_lineage table with definitional data_lineage (one row per declared flow, with is_active lifecycle) and operational lineage_run (one row per execution, FK to definition). Added Section 1.3 Lineage Separation Principle. Added new Section 4 Semantic Views with lineage_graph (reads definitions only, VARCHAR(30) casts on all Kind columns) and lineage_run_latest views. Updated Section 6.3 Monitor All Modules query to use lineage_run. Updated Required Tables (7.1), added Required Semantic Views (7.2), updated Design Checklist (7.3) and Documentation Capture (7.4). Renumbered sections 4–7 (previously 4–6). | Paul Dancer, Worldwide Data Architecture Team, Teradata |
 | 1.4 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
 | 1.3 | 2026-03-20 | Added Section 6.3 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, and reference to Memory Module Section 8 protocol. Updated Section 6.2 checklist to include documentation capture steps. | Nathan Green, Worldwide Data Architecture Team, Teradata |
