@@ -7,7 +7,7 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.4 |
+| **Version** | 1.5 |
 | **Status** | GUIDANCE |
 | **Last Updated** | 2026-04-10 |
 | **Owner** | Data Architecture |
@@ -1175,7 +1175,10 @@ ORDER BY changed_dts DESC;
 
 ---
 
-## 10. Physical Design for Teradata
+## 10. Platform Implementation Guidance: Teradata Vantage
+
+> **Platform Profile — Teradata Vantage**
+> This section is the reference Platform Profile for Teradata Vantage implementations of the AI-Native Data Product standard. The structural requirements in the module design standards are platform-agnostic; the guidance below is Teradata-specific. Teams implementing on other platforms should produce an equivalent Platform Profile for their target, covering the same topics: physical key strategy, partitioning, indexing, statistics collection, compression, and query optimisation.
 
 ### 10.1 Why Physical Design Matters for AI Workloads
 
@@ -1586,6 +1589,7 @@ START: What is table volume?
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.5 | 2026-04-15 | Established platform neutrality. Renamed Section 10 from "Physical Design for Teradata" to "Platform Implementation Guidance: Teradata Vantage" and added a Platform Profile preamble making explicit that this section is Teradata-specific and that other platforms should produce equivalent profiles. Section 10 content unchanged. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.4 | 2026-04-10 | Section 4 (Surrogate Key Strategy) rewritten to address surrogate key instability in SCD Type 2 tables (issue #7). Added Section 4.2 explaining why IDENTITY on _H tables fails; Section 4.3 documenting the recommended Keymap pattern (with flexibility note that organisations should use their own standard if one exists); Section 4.4 (Reference and Lookup Table Exemption) clarifying that reference/lookup tables and detail entities not FK-referenced may use IDENTITY directly; Section 4.5 providing a decision tree with three allocation options; Section 4.6 (natural keys, renamed from old 4.4). Removed old Sections 4.2-4.3 which incorrectly advocated IDENTITY on _H tables. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.3 | 2026-03-20 | Completed swap of id and key to be consistent throughout design standards | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.2 | 2026-03-18 | Renamed is_current_version → is_current throughout, aligned with Domain Module Design Standard naming convention | Kimiko Yabu, Worldwide Data Architecture Team, Teradata |
