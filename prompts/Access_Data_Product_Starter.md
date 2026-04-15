@@ -42,9 +42,8 @@ SELECT
     naming_pattern,
     primary_tables,
     primary_views,
-    deployment_status
 FROM {SemanticDatabase}.data_product_map
-WHERE is_active = 'Y'
+WHERE is_active = 1
 ORDER BY module_name;
 ```
 
@@ -62,7 +61,7 @@ ORDER BY module_name;
 -- What entities (tables) exist?
 SELECT entity_name, module_name, table_name, view_name
 FROM {SemanticDatabase}.entity_metadata
-WHERE is_active = 'Y';
+WHERE is_active = 1;
 
 -- What columns does Party_H have?
 SELECT column_name, business_description, is_pii
@@ -73,7 +72,7 @@ WHERE table_name = 'Party_H';
 SELECT relationship_name, source_table, target_table, 
        source_column, target_column, cardinality
 FROM {SemanticDatabase}.table_relationship
-WHERE is_active = 'Y';
+WHERE is_active = 1;
 
 -- How do I join Party_H to Transaction_H (multi-hop)?
 SELECT hop_count, path_tables, path_joins
@@ -123,12 +122,12 @@ When starting work on a new data product:
 -- Step 2: Discover modules
 SELECT module_name, database_name, primary_tables
 FROM {Product}_Semantic.data_product_map
-WHERE is_active = 'Y';
+WHERE is_active = 1;
 
 -- Step 3: Discover entities
 SELECT entity_name, table_name, module_name
 FROM {Product}_Semantic.entity_metadata
-WHERE is_active = 'Y';
+WHERE is_active = 1;
 
 -- Step 4: Learn relationships
 SELECT relationship_name, source_table, target_table
