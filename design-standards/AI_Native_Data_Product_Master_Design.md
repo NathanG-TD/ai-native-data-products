@@ -103,7 +103,7 @@ Create data products that agents can **discover, understand, and consume autonom
 4. **Self-Describing**: Data products expose their own semantics, contracts, and relationships
 5. **Agent-Native Design**: Optimize for machine interpretation, not just human readability
 6. **Standards-Driven**: Use Knowledge Stores to ensure consistency and compliance
-7. **Platform-Neutral Design**: The structural standards defined here are platform-agnostic. DDL examples throughout the module design standards use Teradata Vantage syntax as the reference implementation. Teams deploying on other platforms should adapt the DDL syntax while preserving the structural intent. Platform-specific implementation guidance is captured in Platform Profiles (see Platform Profiles section).
+7. **Platform-Neutral Design**: The structural standards defined here are platform-agnostic. DDL examples throughout the module design standards use Teradata syntax as the reference implementation. Teams deploying on other platforms should adapt the DDL syntax while preserving the structural intent. Platform-specific implementation guidance is captured in Platform Profiles (see Platform Profiles section).
 
 ---
 
@@ -660,7 +660,7 @@ Platform Profiles are separate from the core design standards deliberately: they
 
 | Platform | Document | Status |
 |----------|----------|--------|
-| Teradata Vantage | `Advocated_Data_Management_Standards.md` — Section 10 | Current reference implementation |
+| Teradata | `Advocated_Data_Management_Standards.md` — Section 10 | Current reference implementation |
 
 As the framework is adopted on additional platforms, new Platform Profiles should be created following the same structure as the Teradata reference. Teams implementing on platforms not yet covered should document their implementation choices in a new Platform Profile rather than modifying the core design standards.
 
