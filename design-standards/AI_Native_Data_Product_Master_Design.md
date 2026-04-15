@@ -1,7 +1,7 @@
 # AI-Native Data Product - Master Design Standard
 
-**Version:** 1.8  
-**Date:** March 20, 2026  
+**Version:** 1.9  
+**Date:** April 15, 2026  
 **Document Type:** Design Standard / Reusable Template  
 **Purpose:** Define the architectural blueprint and design standards for modular, AI-native data products optimized for agentic consumption
 
@@ -11,7 +11,7 @@
 
 This document defines **design standards** for AI-native data products - a reusable template for building multiple data products with consistency, repeatability, and alignment to best practices. This is NOT a specific data product implementation, but rather the **standard patterns, principles, and structures** that all data products should follow.
 
-The architecture enables progressive enhancement - starting with traditional data models and adding AI-native capabilities incrementally. All modules co-locate on Teradata, enabling efficient joins to source data without duplication.
+The architecture enables progressive enhancement - starting with traditional data models and adding AI-native capabilities incrementally. All modules co-locate on the deployment platform, enabling efficient joins to source data without duplication.
 
 ### How to Use This Standard
 
@@ -99,10 +99,11 @@ Create data products that agents can **discover, understand, and consume autonom
 
 1. **Modularity First**: Each module is independently deployable and composable
 2. **Progressive Enhancement**: Start with traditional models, add AI capabilities incrementally
-3. **Zero Data Duplication**: Leverage Teradata co-location - join to source data instead of copying
+3. **Zero Data Duplication**: Leverage platform co-location — join to source data instead of copying
 4. **Self-Describing**: Data products expose their own semantics, contracts, and relationships
 5. **Agent-Native Design**: Optimize for machine interpretation, not just human readability
 6. **Standards-Driven**: Use Knowledge Stores to ensure consistency and compliance
+7. **Platform-Neutral Design**: The structural standards defined here are platform-agnostic. DDL examples throughout the module design standards use Teradata syntax as the reference implementation. Teams deploying on other platforms should adapt the DDL syntax while preserving the structural intent. Platform-specific implementation guidance is captured in Platform Profiles (see Platform Profiles section).
 
 ---
 
@@ -637,18 +638,44 @@ CREATE TABLE Customer360.P_customer_features (
 
 ---
 
+## Platform Profiles
+
+### Concept
+
+A **Platform Profile** is a companion document to these design standards that captures platform-specific implementation guidance for a particular deployment target. The design standards define *what* to build — the structural requirements, module patterns, naming conventions, and integration contracts. A Platform Profile defines *how* to build it on a specific platform.
+
+Platform Profiles are separate from the core design standards deliberately: they can be updated as platform capabilities evolve without changing the structural standards, and new profiles can be added for new platforms without modifying existing ones.
+
+### What a Platform Profile Contains
+
+| Section | Content |
+|---------|---------|
+| **Physical design guidance** | Primary key strategy, partitioning, indexing, co-location patterns |
+| **DDL syntax adaptations** | Data types, default value syntax, view/index DDL for the target platform |
+| **Performance optimisation** | Statistics collection, query optimisation, compression |
+| **Deployment tooling** | Load patterns, ETL tooling recommendations, scheduling |
+| **Platform-specific constraints** | Known limitations, workarounds, version dependencies |
+
+### Current Platform Profiles
+
+| Platform | Document | Status |
+|----------|----------|--------|
+| Teradata | `Advocated_Data_Management_Standards.md` — Section 10 | Current reference implementation |
+
+As the framework is adopted on additional platforms, new Platform Profiles should be created following the same structure as the Teradata reference. Teams implementing on platforms not yet covered should document their implementation choices in a new Platform Profile rather than modifying the core design standards.
+
+---
+
 ## Design Constraints & Considerations
 
-### Teradata-Specific Optimizations
-- **Primary Index (PI)**: Choose based on access patterns per module
-- **Co-location**: Use same PI across related tables for join efficiency
-- **Compression**: Leverage Teradata's columnar compression
-- **Temporal**: Use VALIDTIME for bitemporal modeling
-- **JSON/XML**: Store semi-structured data natively where appropriate
-- **Graph**: Consider leveraging Teradata Graph for Semantic module
+### Platform Implementation Notes
+
+Physical design decisions — indexing strategy, partitioning, compression, statistics collection, and query optimisation — are platform-specific and are documented in Platform Profiles rather than in these core standards. See the relevant Platform Profile for your deployment target.
+
+The following considerations apply regardless of platform:
 
 ### Performance Considerations
-- **Vector Search**: May require specialized indexes (investigate Teradata's vector capabilities)
+- **Vector Search**: Requires platform-native vector index support or a specialist vector store; consult the relevant Platform Profile
 - **Feature Store**: Pre-compute expensive aggregations
 - **Observability**: Partition by time for efficient retention management
 - **Memory**: Consider archival strategy for old sessions
@@ -740,6 +767,7 @@ Observability ──────────→ Memory (closed-loop learning fee
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.9 | 2026-04-15 | Nathan Green, Worldwide Data Architecture Team, Teradata | Established platform neutrality throughout. Updated Executive Summary and Zero Data Duplication principle to remove Teradata-specific language. Added Platform-Neutral Design as Guiding Principle 7. Added Platform Profiles section defining the concept, structure, and current implementations. Refactored Design Constraints section: removed Teradata-Specific Optimizations subsection, added Platform Implementation Notes framing directing implementors to Platform Profiles. Updated Performance Considerations to be platform-neutral. |
 | 1.8 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Corrected module deployment order. Memory and Semantic are now Phase 1 (both must exist before any other module deploys — Memory hosts documentation tables, Semantic hosts discovery metadata). Domain and Observability are Phase 2. Search and Prediction are Phase 3. Updated Implementation Order section and Module Dependencies diagram. |
 | 1.7 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Fixed = 'Y' filter values in agent discovery example queries to = 1 to align with platform boolean standard. |
 | 1.6 | 2026-03-20 | Nathan Green, Worldwide Data Architecture Team, Teradata | Revised to align with data product self-containment principle. Removed shared dp_documentation database pattern. Documentation tables now co-located in {ProductName}_Memory database as design memory alongside runtime memory. Removed Pre-Phase bootstrap from implementation order. Updated Memory module definition, Physical Naming Conventions, and Glossary (revised Documentation Sub-Module entry, removed dp_documentation entry). |

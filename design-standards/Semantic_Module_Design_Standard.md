@@ -1,5 +1,5 @@
 # Semantic Module Design Standard
-## AI-Native Data Product Architecture - Version 2.5 (Tested & Validated)
+## AI-Native Data Product Architecture - Version 2.6 (Tested & Validated)
 
 ---
 
@@ -7,7 +7,7 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 2.5 |
+| **Version** | 2.6 |
 | **Status** | STANDARD - Tested on Teradata |
 | **Last Updated** | 2026-03-20 |
 | **Owner** | Nathan Green, Worldwide Data Architecture Team, Teradata |
@@ -619,11 +619,56 @@ Every Semantic module must populate the Memory database documentation tables as 
 
 **Design Checklist additions:**
 
-- [ ] Module_Registry INSERT generated for this module
-- [ ] Min. 3 Design_Decision INSERTs generated
-- [ ] Change_Log initial release entry generated
-- [ ] Min. 3 Business_Glossary terms captured
-- [ ] Min. 1 Query_Cookbook recipe captured
+- [ ] `Module_Registry` INSERT generated for this module (with `deployment_status = 'DEPLOYED'`)
+- [ ] Min. 3 `Design_Decision` INSERTs generated
+- [ ] `Change_Log` initial release entry generated
+- [ ] Min. 3 `Business_Glossary` terms captured
+- [ ] Min. 1 `Query_Cookbook` recipe captured
+- [ ] `table_relationship` completeness verified (see Section 8.5)
+- [ ] `v_relationship_paths` validated for all expected agent traversal paths
+
+---
+
+### 8.5 table_relationship Completeness Requirement
+
+`table_relationship` is the machine-readable entity-relationship model for this data product. Agents use it — via `v_relationship_paths` — to discover how to join any two tables without human guidance. An incomplete `table_relationship` is one of the most common causes of agent SQL errors, because the agent cannot traverse a path it has no record of.
+
+**Completeness means registering every relationship an agent is expected to traverse**, not just the relationships that feel "important" or that have physical foreign keys. The following categories must all be covered:
+
+| Category | Examples | Common omission |
+|---|---|---|
+| **Intra-module FKs** | `Loan_H → Loan_Keymap`, `LoanPerformance_H → Loan_Keymap` | Child-to-parent within the same entity cluster |
+| **Reference table lookups** | `Loan_H → LoanPurpose_R`, `LoanPerformance_H → DelinquencyStatus_R` | Reference decodes, especially from append-only tables |
+| **Cross-module joins** | `Domain.Loan_H → Prediction.loan_features`, `Domain.Customer_H → Search.entity_embedding` | Joins between modules are frequently omitted |
+| **Semantic joins** | `Domain.LoanStatement_H → Domain.Payment_H → Domain.LoanPerformance_H` | Multi-hop chains used in lineage and audit queries |
+| **Reverse directions** | If A→B is registered, register B→A if agents will traverse in both directions | Bidirectional traversal requirements are easy to miss |
+
+**Validation step — required before deployment:**
+
+Run the following query after populating `table_relationship`. For each entity pair that agents are expected to join, confirm a path exists and that the `path_joins` column contains syntactically valid SQL join conditions:
+
+```sql
+-- Verify a specific traversal path exists (run for each expected entity pair)
+SELECT hop_count, path_tables, path_joins
+FROM {ProductName}_Semantic.v_relationship_paths
+WHERE source_table = '{TableA}'
+  AND target_table = '{TableB}'
+ORDER BY hop_count;
+
+-- Verify no isolated tables (tables with no registered relationships)
+SELECT em.table_name
+FROM {ProductName}_Semantic.entity_metadata em
+WHERE em.is_active = 1
+  AND NOT EXISTS (
+    SELECT 1 FROM {ProductName}_Semantic.table_relationship r
+    WHERE r.is_active = 1
+      AND (r.from_table = em.table_name OR r.to_table = em.table_name)
+  );
+```
+
+A table that appears in `entity_metadata` but has no entries in `table_relationship` is either a deliberate standalone entity (document why in `Design_Decision`) or an omission that will cause agent navigation failures.
+
+**The ERD recipe (`QC-SEMANTIC-002`) in the `Query_Cookbook` generates an entity-relationship listing directly from `table_relationship`.** Generating this output and reviewing it is a practical completeness check — if the ERD looks incomplete, the `table_relationship` data is incomplete.
 
 ---
 
@@ -641,6 +686,7 @@ Every Semantic module must populate the Memory database documentation tables as 
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 2.6 | 2026-04-15 | Added Section 8.5 `table_relationship` Completeness Requirement: all inter-entity relationships must be registered — intra-module FKs, reference table lookups, cross-module joins, multi-hop semantic joins, and bidirectional traversals. Added path existence and isolation validation queries. Cross-referenced ERD recipe (QC-SEMANTIC-002) as a completeness check. Updated Section 8.4 design checklist with deployment_status requirement, table_relationship completeness check, and v_relationship_paths validation. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 2.5 | 2026-03-20 | Fixed boolean column definitions and filter values throughout: converted all CHAR(1) DEFAULT 'Y'/'N' columns (is_active, is_pii, is_sensitive, is_required, is_mandatory) to BYTEINT NOT NULL DEFAULT 1/0; converted all = 'Y' / = 'N' filter values to = 1 / = 0 to align with platform boolean standard. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 2.4 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
 | 2.3 | 2026-03-20 | Added Section 8.4 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, design checklist additions, and reference to Memory Module Section 8 protocol. | Nathan Green, Worldwide Data Architecture Team, Teradata |
