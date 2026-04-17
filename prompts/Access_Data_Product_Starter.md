@@ -47,6 +47,8 @@ WHERE is_active = 1
 ORDER BY module_name;
 ```
 
+**Note**: All `is_*` flags in AI-Native Data Products are `BYTEINT` (1 = true, 0 = false), not `CHAR`. Filtering with `'Y'` / `'N'` will fail with Error 3535 (character to numeric conversion). Always filter with integer `1` / `0`.
+
 **This tells you**:
 - Which modules are deployed (Domain, Prediction, Search, Memory, Observability)
 - Where each module lives (database names)
@@ -105,6 +107,7 @@ ORDER BY hop_count;
 - Most tables use temporal tracking (valid_from_dts, valid_to_dts, is_current)
 - For current state: `WHERE is_current = 1 AND is_deleted = 0`
 - For historical: Use temporal range queries
+- All `is_*` flags are `BYTEINT`; always compare with `1` / `0`, never `'Y'` / `'N'`
 
 **5. Table References in Metadata**
 - Memory and Observability use VARCHAR comma-separated table lists
@@ -131,7 +134,8 @@ WHERE is_active = 1;
 
 -- Step 4: Learn relationships
 SELECT relationship_name, source_table, target_table
-FROM {Product}_Semantic.table_relationship;
+FROM {Product}_Semantic.table_relationship
+WHERE is_active = 1;
 
 -- Step 5: Ready to generate queries!
 ```
@@ -159,13 +163,15 @@ WHERE DatabaseName = 'Customer360_Semantic';
 -- Result: Customer360_Semantic exists
 
 -- 2. Discover modules
-SELECT module_name, database_name FROM Customer360_Semantic.data_product_map;
+SELECT module_name, database_name FROM Customer360_Semantic.data_product_map
+WHERE is_active = 1;
 -- Result: Domain → Customer360_Domain
 --         Prediction → Customer360_Prediction
 
 -- 3. Discover Domain entities
 SELECT entity_name, table_name FROM Customer360_Semantic.entity_metadata
-WHERE module_name = 'Domain';
+WHERE is_active = 1
+  AND module_name = 'Domain';
 -- Result: Party → Party_H, Product → Product_H
 
 -- 4. Now ready to query
