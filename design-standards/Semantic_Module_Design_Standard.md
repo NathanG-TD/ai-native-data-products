@@ -123,7 +123,7 @@ COMMENT ON COLUMN Semantic.entity_metadata.industry_standard IS
 'Industry data model standard used - FIBO, HL7, CUSTOM, etc.';
 
 COMMENT ON COLUMN Semantic.entity_metadata.is_active IS 
-'Metadata active indicator - Y = entity is active, N = deprecated';
+'Metadata active indicator - 1 = entity is active, 0 = deprecated';
 
 COMMENT ON COLUMN Semantic.entity_metadata.created_at IS 
 'Timestamp when metadata record was created';
@@ -172,16 +172,16 @@ COMMENT ON COLUMN Semantic.column_metadata.business_description IS
 'Business meaning and purpose of column - explains what the data represents';
 
 COMMENT ON COLUMN Semantic.column_metadata.is_pii IS 
-'Personally Identifiable Information flag - Y = contains PII, N = no PII - used for privacy compliance';
+'Personally Identifiable Information flag - 1 = contains PII, 0 = no PII - used for privacy compliance';
 
 COMMENT ON COLUMN Semantic.column_metadata.is_sensitive IS 
-'Sensitive data flag - Y = sensitive (SSN, credit card, etc.), N = not sensitive - used for security controls';
+'Sensitive data flag - 1 = sensitive (SSN, credit card, etc.), 0 = not sensitive - used for security controls';
 
 COMMENT ON COLUMN Semantic.column_metadata.data_classification IS 
 'Data classification level - PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED - determines access controls';
 
 COMMENT ON COLUMN Semantic.column_metadata.is_required IS 
-'Required field indicator - Y = NOT NULL constraint, N = nullable - indicates mandatory data';
+'Required field indicator - 1 = NOT NULL constraint, 0 = nullable - indicates mandatory data';
 
 COMMENT ON COLUMN Semantic.column_metadata.data_type IS 
 'Physical data type - VARCHAR, INTEGER, DECIMAL, DATE, TIMESTAMP, etc.';
@@ -190,7 +190,7 @@ COMMENT ON COLUMN Semantic.column_metadata.allowed_values_json IS
 'Allowed values constraint - JSON array of valid values for constrained columns';
 
 COMMENT ON COLUMN Semantic.column_metadata.is_active IS 
-'Metadata active indicator - Y = column is active, N = deprecated or removed';
+'Metadata active indicator - 1 = column is active, 0 = deprecated or removed';
 
 COMMENT ON COLUMN Semantic.column_metadata.created_at IS 
 'Timestamp when metadata record was created';
@@ -240,7 +240,7 @@ COMMENT ON COLUMN Semantic.naming_standard.examples IS
 'Example usage of this naming convention';
 
 COMMENT ON COLUMN Semantic.naming_standard.is_active IS 
-'Standard active indicator - Y = currently used, N = deprecated';
+'Standard active indicator - 1 = currently used, 0 = deprecated';
 
 COMMENT ON COLUMN Semantic.naming_standard.created_at IS 
 'Timestamp when naming standard was documented';
@@ -320,7 +320,7 @@ COMMENT ON COLUMN Semantic.data_product_map.deployed_dts IS
 'Timestamp when module was deployed to production';
 
 COMMENT ON COLUMN Semantic.data_product_map.is_active IS 
-'Module active indicator - Y = module is active, N = deprecated';
+'Module active indicator - 1 = module is active, 0 = deprecated';
 
 COMMENT ON COLUMN Semantic.data_product_map.created_at IS 
 'Timestamp when module registry record was created';
@@ -333,17 +333,17 @@ COMMENT ON COLUMN Semantic.data_product_map.updated_at IS
 INSERT INTO Semantic.data_product_map VALUES
 (DEFAULT, 'Domain', 'Core business entities and source of truth', 'Business entity storage',
  'Customer360_Domain', 'SEPARATE_DB', NULL, 'Party_H, Product_H, Transaction_H', 'Party_Current, Product_Current',
- '2.0', 'DEPLOYED', CURRENT_TIMESTAMP(6), 'Y', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6));
+ '2.0', 'DEPLOYED', CURRENT_TIMESTAMP(6), 1, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6));
 
 INSERT INTO Semantic.data_product_map VALUES
 (DEFAULT, 'Semantic', 'Schema metadata and relationships', 'Schema knowledge layer',
  'Customer360_Semantic', 'SEPARATE_DB', NULL, 'entity_metadata, table_relationship, data_product_map', 'v_entity_catalog, v_relationship_paths',
- '2.0', 'DEPLOYED', CURRENT_TIMESTAMP(6), 'Y', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6));
+ '2.0', 'DEPLOYED', CURRENT_TIMESTAMP(6), 1, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6));
 
 INSERT INTO Semantic.data_product_map VALUES
 (DEFAULT, 'Prediction', 'Feature store and ML predictions', 'ML feature storage',
  'Customer360_Prediction', 'SEPARATE_DB', NULL, 'customer_features, model_prediction', 'v_customer_features_current',
- '1.0', 'DEPLOYED', CURRENT_TIMESTAMP(6), 'Y', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6));
+ '1.0', 'DEPLOYED', CURRENT_TIMESTAMP(6), 1, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6));
 ```
 
 **Agent Discovery Query**:
@@ -420,10 +420,10 @@ COMMENT ON COLUMN Semantic.table_relationship.relationship_meaning IS
 'Business meaning of relationship - explains what the association represents';
 
 COMMENT ON COLUMN Semantic.table_relationship.is_mandatory IS 
-'Mandatory relationship indicator - Y = foreign key is NOT NULL (required), N = nullable (optional)';
+'Mandatory relationship indicator - 1 = foreign key is NOT NULL (required), 0 = nullable (optional)';
 
 COMMENT ON COLUMN Semantic.table_relationship.is_active IS 
-'Relationship active indicator - Y = currently valid, N = deprecated';
+'Relationship active indicator - 1 = currently valid, 0 = deprecated';
 
 COMMENT ON COLUMN Semantic.table_relationship.created_at IS 
 'Timestamp when relationship metadata was created';
@@ -686,6 +686,7 @@ A table that appears in `entity_metadata` but has no entries in `table_relations
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 2.7 | 2026-04-21 | Fixed boolean indicator descriptions in COMMENT ON COLUMN statements: replaced Y/N descriptions with 1/0 on is_active (entity_metadata, column_metadata, naming_standard, data_product_map, table_relationship), is_pii, is_sensitive, is_required, is_mandatory. Fixed three data_product_map example INSERTs using string literal 'Y' for is_active to use integer 1. DDL column definitions were already correct (BYTEINT NOT NULL DEFAULT 1/0); this fix aligns the documentation text with the boolean standard. | Rainer Geissendörfer, Worldwide Data Architecture Team, Teradata |
 | 2.6 | 2026-04-15 | Added Section 8.5 `table_relationship` Completeness Requirement: all inter-entity relationships must be registered — intra-module FKs, reference table lookups, cross-module joins, multi-hop semantic joins, and bidirectional traversals. Added path existence and isolation validation queries. Cross-referenced ERD recipe (QC-SEMANTIC-002) as a completeness check. Updated Section 8.4 design checklist with deployment_status requirement, table_relationship completeness check, and v_relationship_paths validation. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 2.5 | 2026-03-20 | Fixed boolean column definitions and filter values throughout: converted all CHAR(1) DEFAULT 'Y'/'N' columns (is_active, is_pii, is_sensitive, is_required, is_mandatory) to BYTEINT NOT NULL DEFAULT 1/0; converted all = 'Y' / = 'N' filter values to = 1 / = 0 to align with platform boolean standard. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 2.4 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
