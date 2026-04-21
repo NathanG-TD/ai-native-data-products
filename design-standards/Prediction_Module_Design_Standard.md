@@ -579,7 +579,7 @@ INSERT INTO Semantic.column_metadata (
 ) VALUES (
     'customer_features', 'age_years',
     'Customer age in years calculated from date of birth',
-    'INTEGER', 'Y'
+    'INTEGER', 1
 );
 ```
 
@@ -769,7 +769,7 @@ INSERT INTO Semantic.column_metadata (
 ) VALUES (
     'PredictionDB', 'customer_features', 'age_years',
     'Customer age in years calculated from date of birth',
-    'INTEGER', 'Y'
+    'INTEGER', 1
 );
 ```
 
@@ -910,6 +910,7 @@ Prediction → Observability: Feature drift, quality monitoring
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
+| 1.7 | 2026-04-21 | Fixed boolean standard violations in INSERT examples: Semantic.column_metadata.is_required value changed from 'Y' (string) to 1 (integer) in Sections 5.2 and 7.2. | Rainer Geissendörfer, Worldwide Data Architecture Team, Teradata |
 | 1.6 | 2026-03-20 | Fixed boolean column definition in model_prediction table: is_active CHAR(1) DEFAULT 'Y' → BYTEINT NOT NULL DEFAULT 1; fixed = 'Y' filter value to = 1. | Nathan Green, Worldwide Data Architecture Team, Teradata |
 | 1.5 | 2026-03-20 | Revised Documentation Capture Requirements section — updated to reflect self-contained data product principle. Documentation tables now reside in the Memory database ({ProductName}_Memory), not a shared dp_documentation database. Removed data_product column from INSERT templates, removed bootstrap checklist item, updated prose references from dp_documentation to Memory database. |
 | 1.4 | 2026-03-20 | Added Section 7.4 Documentation Capture Requirements — minimum dp_documentation records, typical decision categories, output file placement, and reference to Memory Module Section 8 protocol. Updated Section 7.3 checklist to include documentation capture steps. | Nathan Green, Worldwide Data Architecture Team, Teradata |
