@@ -535,9 +535,9 @@ CREATE TABLE {ReferenceName}_R (
     
     PRIMARY INDEX ({reference}_id)
 )
--- For reference data, can use UNIQUE PRIMARY INDEX on (code, effective_date)
--- since reference data typically doesn't version like entity tables:
-UNIQUE PRIMARY INDEX ({reference}_code, effective_date);
+-- NOTE: Use PRIMARY INDEX (not UNIQUE PRIMARY INDEX) even for reference tables
+-- with effective_date/expiration_date columns, because multiple temporal versions
+-- of the same reference code will coexist as records expire and new ones are inserted.
 
 -- Table comment (Required)
 COMMENT ON TABLE {ReferenceName}_R IS 
